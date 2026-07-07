@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peke's Burger</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@400;500;600;700&display=swap');
+html,body{font-family:'Poppins',sans-serif;background:#0c0c0d;color:#fff;min-height:100vh;margin:0}
+body{background-image:radial-gradient(circle at 50% 15%,rgba(242,101,34,.28),transparent 55%),radial-gradient(circle at 15% 90%,rgba(242,101,34,.12),transparent 45%)}
+.logo-font{font-family:'Playfair Display',serif}
+.brand-font{font-family:'Poppins',sans-serif;font-weight:700}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:0}
+.content{position:relative;z-index:1}
+.fade{opacity:0;transform:translateY(30px);animation:fade 1s ease-out forwards}
+.fade.d1{animation-delay:.15s}.fade.d2{animation-delay:.35s}.fade.d3{animation-delay:.55s}.fade.d4{animation-delay:.75s}
+@keyframes fade{to{opacity:1;transform:translateY(0)}}
+.btn-main{background:#F26522;color:#000;transition:all .25s;box-shadow:0 10px 30px rgba(242,101,34,.3)}
+.btn-main:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 18px 40px rgba(242,101,34,.45)}
+/* Barra superior con iconos de redes */
+.top-bar{position:fixed;top:18px;right:18px;display:flex;gap:12px;z-index:5}
+.icon-btn{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.1);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;transition:all .25s;overflow:hidden;color:#fff;font-size:1.25rem}
+.icon-btn:hover{background:#F26522;color:#000;transform:translateY(-3px) scale(1.06);box-shadow:0 10px 25px rgba(242,101,34,.4)}
+.icon-btn img{width:62%;height:62%;object-fit:contain}
+.tagline{letter-spacing:.32em}
+</style>
+</head>
+<body class="flex items-center justify-center">
+<div class="overlay"></div>
+
+<!-- Barra superior con iconos -->
+<div class="top-bar">
+  <!-- Instagram (cambia el enlace por tu Instagram real) -->
+  <a href="https://www.instagram.com/pekesburger" target="_blank" aria-label="Instagram">
+    <div class="icon-btn"><i class="fab fa-instagram"></i></div>
+  </a>
+  <!-- WhatsApp (cambia el número por tu WhatsApp real) -->
+  <a href="https://wa.me/521XXXXXXXXXX?text=Hola%20Peke's%2C%20quisiera%20hacer%20un%20pedido%20por%20favor." target="_blank" aria-label="WhatsApp">
+    <div class="icon-btn"><i class="fab fa-whatsapp"></i></div>
+  </a>
+</div>
+
+<main class="content w-full max-w-md mx-auto px-6 py-12 text-center min-h-screen flex flex-col items-center justify-center">
+    <img src="logbug.png" alt="Peke's Burger" class="h-40 sm:h-48 w-auto mb-4 fade d1" onerror="this.style.display='none'">
+    <img src="log.png" id="nameLogo" alt="Peke's Burger" class="h-16 sm:h-20 w-auto mb-4 fade d2" onerror="this.style.display='none';document.getElementById('nameText').style.display='block'">
+    <h1 id="nameText" style="display:none" class="brand-font text-5xl sm:text-6xl font-bold mb-4 text-[#F26522] fade d2">Peke's Burger</h1>
+    <p class="text-white/60 text-xs sm:text-sm mb-2 tagline uppercase fade d3">Carne Asada · Parrilla · Sirloin</p>
+    <p class="text-white/60 text-xs sm:text-sm mb-10 tagline uppercase fade d3">Costillas y más · Desde 2007</p>
+
+    <div class="w-full fade d4">
+        <a href="menu.html" class="btn-main block w-full py-4 rounded-2xl font-bold text-lg">
+            <i class="fas fa-burger mr-2"></i>Ver Menú y Ordenar
+        </a>
+    </div>
+
+    <p class="text-white/25 text-xs mt-12 fade d4">© Peke's Burger</p>
+</main>
+</body>
+</html>
