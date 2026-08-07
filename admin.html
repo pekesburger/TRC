@@ -75,6 +75,12 @@ tr.low td{background:rgba(239,68,68,.08)}
 .pos-size.selected{background:#F26522;color:#000;box-shadow:0 4px 14px rgba(242,101,34,.45)}
 .hidden{display:none!important}
 @media print{body *{visibility:hidden}#printArea,#printArea *{visibility:visible}#printArea{position:absolute;left:0;top:0;width:100%;color:#000;background:#fff}}
+.tk-mini{width:26px;height:26px;border-radius:6px;background:rgba(255,255,255,.08);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;transition:all .15s;border:none;cursor:pointer}
+.tk-mini:hover{background:rgba(255,255,255,.18)}
+.tk-mini.on{background:#F26522;color:#000}
+#tk-preview *{color:#000!important}
+#ticket-detail *{color:#000!important}
+.cmp-bar{width:100%;border-radius:4px 4px 0 0;transition:height .3s}
 </style>
 </head>
 <body>
@@ -127,6 +133,7 @@ tr.low td{background:rgba(239,68,68,.08)}
       <div class="flex items-center gap-2">
         <button class="btn btn-gold" onclick="openPOS()"><i class="fas fa-plus"></i> Orden</button>
         <label class="text-xs text-white/50 flex items-center gap-2"><input type="checkbox" id="soundToggle" checked> <i class="fas fa-volume-high"></i> Sonido</label>
+        <label class="text-xs text-white/50 flex items-center gap-2" title="Actívalo SOLO en la compu conectada a la impresora térmica"><input type="checkbox" id="autoprint-toggle" onchange="toggleAutoPrint(this)"> <i class="fas fa-print"></i> Auto-imprimir comanda</label>
         <button class="btn btn-ghost" onclick="renderAll()"><i class="fas fa-rotate"></i> Actualizar</button>
       </div>
     </div>
@@ -217,17 +224,25 @@ tr.low td{background:rgba(239,68,68,.08)}
   <section id="tab-reportes" class="hidden">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <h1 class="logo-font text-2xl font-bold">Reporte de gastos y ganancias</h1>
-      <div class="flex items-center gap-2">
-        <select class="inp w-auto" id="rep-range" onchange="renderReportes()">
+      <div class="flex items-center gap-2 flex-wrap">
+        <select class="inp w-auto" id="rep-range" onchange="repRangeChanged()">
           <option value="today">Hoy</option>
           <option value="week">Últimos 7 días</option>
           <option value="month">Este mes</option>
           <option value="all">Todo</option>
+          <option value="custom">📅 Rango de fechas…</option>
         </select>
+        <div id="rep-custom" class="hidden items-center gap-2 flex-wrap" style="display:none">
+          <span class="text-white/50 text-sm">Del</span>
+          <input type="date" class="inp w-auto" id="rep-from" onchange="renderReportes()">
+          <span class="text-white/50 text-sm">al</span>
+          <input type="date" class="inp w-auto" id="rep-to" onchange="renderReportes()">
+        </div>
         <button class="btn btn-ghost" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
         <button class="btn btn-ghost" onclick="logoutOwner()"><i class="fas fa-right-from-bracket"></i> Salir</button>
       </div>
     </div>
+    <p id="rep-period" class="text-white/40 text-sm mb-3"></p>
 
     <div id="printArea">
     <div class="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5">
@@ -237,6 +252,12 @@ tr.low td{background:rgba(239,68,68,.08)}
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Costo productos (COGS)</p><p class="stat-num text-orange-400" id="rep-cogs">$0</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Gastos</p><p class="stat-num text-red-400" id="rep-gastos">$0</p></div>
       <div class="card p-4 border-2" style="border-color:rgba(242,101,34,.4)"><p class="text-white/40 text-xs uppercase tracking-wider">Ganancia neta</p><p class="stat-num" id="rep-ganancia">$0</p><p class="text-white/30 text-xs" id="rep-margen">Margen 0%</p></div>
+    </div>
+
+    <div class="card p-4 mb-5">
+      <h3 class="font-semibold mb-1 text-white/70"><i class="fas fa-scale-balanced gold"></i> Comparativa: esta semana vs semana pasada</h3>
+      <p class="text-white/30 text-xs mb-3">Últimos 7 días contra los 7 días anteriores (mismo día de la semana).</p>
+      <div id="rep-compare"></div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
@@ -353,6 +374,49 @@ tr.low td{background:rgba(239,68,68,.08)}
       <div id="menu-items"></div>
     </div>
 
+    <!-- Editor de tickets -->
+    <div class="card p-5 mt-5">
+      <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <h3 class="font-semibold"><i class="fas fa-receipt gold"></i> Tickets (editor en tiempo real)</h3>
+        <div class="flex gap-2 flex-wrap">
+          <select class="inp w-auto" id="tk-which" onchange="renderTicketEditor()">
+            <option value="caja">Ticket de Caja (cliente)</option>
+            <option value="cocina">Comanda de Cocina</option>
+          </select>
+          <button class="btn btn-ghost" onclick="tkTestPrint()"><i class="fas fa-print"></i> Probar</button>
+          <button class="btn btn-gold" onclick="saveTickets()"><i class="fas fa-floppy-disk"></i> Guardar</button>
+        </div>
+      </div>
+      <p class="text-white/40 text-sm mb-4">Ordena los bloques (▲▼), alinea (izq/centro/der), cambia tamaño, negrita, muestra/oculta, edita el texto libre y sube un QR. Formato 58&nbsp;mm. Se guarda en Firebase y aplica en todas las compus.</p>
+      <div class="grid md:grid-cols-2 gap-5">
+        <div>
+          <div class="flex justify-between mb-2 gap-2 flex-wrap">
+            <button class="btn btn-ghost" onclick="tkAddText()"><i class="fas fa-plus"></i> Agregar texto</button>
+            <label class="btn btn-ghost cursor-pointer"><i class="fas fa-qrcode"></i> Subir QR<input type="file" accept="image/*" class="hidden" onchange="tkUploadQR(event)"></label>
+          </div>
+          <div id="tk-blocks"></div>
+        </div>
+        <div>
+          <p class="text-xs text-white/40 mb-2 text-center">Vista previa (ejemplo)</p>
+          <div id="tk-preview" style="background:#fff;color:#000;width:230px;padding:12px 8px;border-radius:8px;margin:0 auto;font-family:'Courier New',monospace"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modificadores rápidos -->
+    <div class="card p-5 mt-5">
+      <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <h3 class="font-semibold"><i class="fas fa-sliders gold"></i> Modificadores rápidos</h3>
+        <button class="btn btn-ghost" onclick="restoreMods()"><i class="fas fa-rotate-left"></i> Restaurar</button>
+      </div>
+      <p class="text-white/40 text-sm mb-3">Botones rápidos que aparecen en cada platillo (POS y menú) para quitar o pedir algo: "Sin cebolla", "Sin chile", etc.</p>
+      <div class="flex gap-2 mb-3">
+        <input class="inp flex-1" id="mod-input" placeholder="Ej: Sin jitomate" onkeydown="if(event.key==='Enter')addMod()">
+        <button class="btn btn-gold" onclick="addMod()"><i class="fas fa-plus"></i> Agregar</button>
+      </div>
+      <div id="mods-list"></div>
+    </div>
+
     <!-- Descuentos / promociones -->
     <div class="card p-5 mt-5">
       <h3 class="font-semibold mb-1"><i class="fas fa-percent gold"></i> Descuentos y promociones</h3>
@@ -465,6 +529,21 @@ tr.low td{background:rgba(239,68,68,.08)}
   </div>
 </div>
 
+<!-- Modal ver ticket a detalle -->
+<div class="modal-bg" id="ticketModal">
+  <div class="card p-5 w-full max-w-sm">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="logo-font text-lg font-bold"><i class="fas fa-receipt gold"></i> Ticket a detalle</h3>
+      <button class="btn btn-ghost" style="padding:.3rem .6rem" onclick="closeModal('ticketModal')"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div id="ticket-detail" style="background:#fff;color:#000;width:250px;max-width:100%;margin:0 auto;padding:14px 10px;border-radius:8px;font-family:'Courier New',monospace;max-height:58vh;overflow:auto"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn btn-ghost flex-1" onclick="printTicketFromModal()"><i class="fas fa-print"></i> Imprimir</button>
+      <button class="btn btn-ghost flex-1" onclick="shareTicketFromModal()"><i class="fab fa-whatsapp text-green-400"></i> Enviar PDF</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal POS (nueva orden para el personal) -->
 <div class="modal-bg" id="posModal">
   <div class="card w-full max-w-4xl p-0 overflow-hidden flex flex-col" style="height:92vh">
@@ -479,9 +558,15 @@ tr.low td{background:rgba(239,68,68,.08)}
         <div id="pos-items" class="flex-1 overflow-y-auto px-4 py-2"></div>
       </div>
       <div class="w-full md:w-80 flex flex-col bg-black/30 border-t md:border-t-0 border-white/10 min-h-0">
-        <div class="p-3 border-b border-white/10 grid grid-cols-2 gap-2">
-          <input id="pos-name" class="inp" placeholder="Nombre / Mesa *" oninput="posValidate()">
-          <input id="pos-phone" class="inp" placeholder="Celular *" inputmode="numeric" oninput="posValidate()">
+        <div class="p-3 border-b border-white/10 space-y-2">
+          <div class="grid grid-cols-2 gap-2">
+            <input id="pos-name" class="inp" placeholder="Nombre *" oninput="posValidate()">
+            <input id="pos-mesa" class="inp" placeholder="Mesa" inputmode="numeric">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <input id="pos-personas" class="inp" type="number" min="1" placeholder="👥 Personas">
+            <input id="pos-phone" class="inp" placeholder="Celular (opcional)" inputmode="numeric">
+          </div>
         </div>
         <div id="pos-ticket" class="flex-1 overflow-y-auto p-3 space-y-1" style="min-height:80px"></div>
         <div class="p-3 border-t border-white/10">
@@ -868,7 +953,16 @@ function renderConfig(){
     </div>`).join(''):'<p class="text-white/30 text-sm py-3 text-center">Sin empleados aún.</p>');
   renderMenuEditor();
   renderDiscounts();
+  if(typeof renderTicketEditor==='function')renderTicketEditor();
+  if(typeof renderModsEditor==='function')renderModsEditor();
 }
+function renderModsEditor(){
+  const host=document.getElementById('mods-list');if(!host)return;
+  host.innerHTML=getMods().map(m=>`<span class="inline-flex items-center gap-1 bg-white/10 rounded-full px-3 py-1 text-sm m-1">${m}<button onclick="delMod('${ea(m)}')" class="text-white/40 hover:text-red-400 ml-1">✕</button></span>`).join('')||'<p class="text-white/30 text-sm">Sin modificadores.</p>';
+}
+window.addMod=function(){const v=(document.getElementById('mod-input').value||'').trim();if(!v)return;const list=getMods().slice();if(!list.includes(v))list.push(v);db.ref('modifiers').set(list);document.getElementById('mod-input').value='';showToast('Modificador agregado');};
+window.delMod=function(label){db.ref('modifiers').set(getMods().filter(m=>m!==label));};
+window.restoreMods=function(){db.ref('modifiers').set(DEFAULT_MODS);showToast('Modificadores restaurados');};
 /* ============ Config: descuentos / promociones ============ */
 window.discCfgToggle=function(){
   const t=document.getElementById('disc-type-cfg').value;
@@ -1022,15 +1116,16 @@ function renderCocina(){
       :o.status==='preparando'?`<button class="btn btn-green flex-1" onclick="setStatus(${o.id},'listo')"><i class="fas fa-check"></i> Marcar listo</button>`
       :`<span class="btn flex-1" style="background:rgba(34,197,94,.15);color:#86efac;cursor:default"><i class="fas fa-bell"></i> Listo · esperando caja</span>`;
     return `<div class="card p-4 ${o.status==='nuevo'?'pulse':''}" style="${o.status==='nuevo'?'border-color:rgba(239,68,68,.5)':''}">
-      <div class="flex items-center justify-between mb-2">
-        <span class="font-bold text-lg">${o.table||'Sin mesa'}</span>
-        <span class="tag tag-${o.status}">${o.status}</span>
+      <div class="flex items-center justify-between mb-1 flex-wrap gap-1">
+        <span class="font-bold text-lg">${o.mesa?('Mesa '+o.mesa):(o.table||'Sin mesa')}</span>
+        <div class="flex gap-1 items-center flex-wrap">${o.personas?`<span class="tag" style="background:rgba(59,130,246,.2);color:#93c5fd"><i class="fas fa-users"></i> ${o.personas}</span>`:''}<span class="tag tag-${o.status}">${o.status}</span></div>
       </div>
-      <p class="text-white/40 text-xs mb-3"><i class="far fa-clock"></i> ${elapsed(o.createdAt)} · #${String(o.id).slice(-4)}</p>
+      ${o.mesa&&o.table?`<p class="text-white/50 text-xs mb-1"><i class="fas fa-user"></i> ${o.table}</p>`:''}
+      <p class="text-white/40 text-xs mb-3"><i class="far fa-clock"></i> ${elapsed(o.createdAt)} · #${String(o.id).slice(-4)}${o.phone?` · <i class="fas fa-phone"></i> ${o.phone}`:''}</p>
       <div class="text-sm mb-3">${itemsHtml}</div>
       ${o.notes?`<p class="text-xs bg-yellow-500/10 text-yellow-200 rounded-lg p-2 mb-3"><i class="fas fa-note-sticky"></i> ${o.notes}</p>`:''}
       <p class="text-right gold font-bold mb-3">${money(o.total)}</p>
-      <div class="flex gap-2">${next}<button class="btn btn-ghost" onclick="openPOSedit(${o.id})" title="Editar comanda"><i class="fas fa-pen"></i></button><button class="btn btn-ghost" onclick="setStatus(${o.id},'cancelado')" title="Cancelar"><i class="fas fa-xmark"></i></button></div>
+      <div class="flex gap-2">${next}<button class="btn btn-ghost" onclick="openPOSedit(${o.id})" title="Editar / agregar a la orden"><i class="fas fa-pen"></i></button><button class="btn btn-ghost" onclick="setStatus(${o.id},'cancelado')" title="Cancelar"><i class="fas fa-xmark"></i></button></div>
     </div>`;
   }).join('');
   const n=orders.length;updateBadge('badge-cocina',n);
@@ -1126,6 +1221,7 @@ window.confirmPay=function(){
   if(document.getElementById('pay-wa').checked){
     shareTicketDoc({...order,paymentMethod:method,paidAt:new Date().toISOString()});
   }
+  printTicket(id); // imprime el ticket del cliente al cobrar (silencioso con kiosk-printing)
   closeModal('payModal');showToast('¡Cobrado! '+money(order.total));
 };
 function corteCaja(){
@@ -1188,9 +1284,9 @@ function waNumber(phone){
 /* Datos del negocio y recursos del ticket */
 const BIZ={
   name:"Peke's Burger",
-  addr:["Torreon, Coahuila"],
-  tel:"",
-  social:""
+  addr:["Av. Cipreses 1003","Torreón Jardín","27200 Torreón, Coahuila"],
+  tel:"871 224 2373",
+  social:"https://www.instagram.com/pekesburgertrc"
 };
 const TK={logo:null, qr:null, qrImg:null};
 function imgToData(src){return new Promise(res=>{const img=new Image();img.crossOrigin='anonymous';img.onload=()=>{try{const c=document.createElement('canvas');c.width=img.naturalWidth||300;c.height=img.naturalHeight||150;c.getContext('2d').drawImage(img,0,0);res({url:c.toDataURL('image/png'),w:c.width,h:c.height});}catch(e){res(null);}};img.onerror=()=>res(null);img.src=src;});}
@@ -1253,51 +1349,182 @@ async function shareTicketDoc(o){
   }
 }
 window.shareTicket=function(id){const o=ordersCache[id];if(!o)return;shareTicketDoc(o);};
-function ticketHTML(o){
-  const rows=(o.items||[]).map(i=>`<tr><td>${i.qty}x ${itemLabel(i)}${i.note?'<br><span style="font-size:10px">• '+i.note+'</span>':''}${(i.extras||[]).map(e=>'<br><span style="font-size:10px">+ '+e.name+' '+money(e.price)+'</span>').join('')}${i.discount&&i.discount.type?'<br><span style="font-size:10px">'+discLabel(i.discount)+' -'+money(lineDiscount(i))+'</span>':''}</td><td style="text-align:right;vertical-align:top">${money(lineTotal(i))}</td></tr>`).join('');
-  const efe=o.paymentMethod==='efectivo'&&(+o.paidCash)?`<div class="row"><span>Efectivo</span><span>${money(o.paidCash)}</span></div><div class="row"><span>Cambio</span><span>${money(o.paidChange||0)}</span></div>`:'';
-  const qrHtml=TK.qr?`<img src="${TK.qr}" style="width:110px;height:110px">`:`<img src="qrred.png" style="width:110px;height:110px" onerror="this.style.display='none'">`;
-  return `<html><head><meta charset="utf-8"><title>Ticket #${String(o.id).slice(-4)}</title><style>
-    *{font-family:'Courier New',monospace}body{width:280px;margin:0 auto;padding:10px;color:#000}
-    h2{text-align:center;margin:4px 0;font-size:18px}p{margin:2px 0;text-align:center;font-size:11px}
-    img.logo{display:block;margin:0 auto 4px;max-width:150px;max-height:80px}
-    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}td{padding:2px 0;vertical-align:top}
-    .hr{border-top:1px dashed #000;margin:6px 0}.tot{display:flex;justify-content:space-between;font-weight:bold;font-size:15px}
-    .row{display:flex;justify-content:space-between;font-size:12px}
-  </style></head><body onload="setTimeout(function(){window.print()},400)">
-    <img class="logo" src="logtiket.png" onerror="this.style.display='none'">
-    <h2>${BIZ.name}</h2>
-    ${BIZ.addr.map(l=>`<p>${l}</p>`).join('')}
-    ${BIZ.tel?`<p>Tel: ${BIZ.tel}</p>`:''}
-    <div class="hr"></div>
-    <p style="text-align:left">Ticket #${String(o.id).slice(-4)} &nbsp;·&nbsp; ${fmtDateTime(o.paidAt||o.createdAt)}</p>
-    <p style="text-align:left">Cliente: ${o.table||'Público en general'}</p>
-    <div class="hr"></div>
-    <table>${rows}</table>
-    <div class="hr"></div>
-    <div class="tot"><span>TOTAL</span><span>${money(o.total)}</span></div>
-    ${o.paymentMethod?`<div class="row"><span>Pago</span><span>${metodoLabel(o.paymentMethod)}</span></div>`:''}
-    ${efe}
-    <div class="hr"></div>
-    <p>*Precios incluyen impuestos*</p>
-    <p>Cajero: ${o.paidBy||userLabel()||'—'}</p>
-    <p style="font-weight:bold">¡Gracias por su compra!</p>
-    <div style="text-align:center;margin-top:6px">${qrHtml}</div>
-  </body></html>`;
-}
-window.printTicket=function(id){
-  const o=ordersCache[id];if(!o)return;
-  const w=window.open('','_blank','width=320,height=600');
-  if(!w){showToast('Permite ventanas emergentes para imprimir');return;}
-  w.document.write(ticketHTML(o));w.document.close();
+/* ============ TICKETS CONFIGURABLES (58mm) + IMPRESIÓN ============ */
+const TK_SIZES={sm:'12px',md:'15px',lg:'19px',xl:'24px'};
+const TK_LABELS={logo:'Logo',negocio:'Nombre del negocio',direccion:'Dirección',tel:'Teléfono',separador:'── Separador ──',folio:'Folio / Ticket #',fecha:'Fecha y hora',cliente:'Cliente (nombre)',mesa:'Mesa',personas:'Personas',items:'Platillos (con precios)',items_cocina:'Platillos (cocina, sin precio)',total:'Total',pago:'Método de pago',cajero:'Cajero',notas:'Notas del pedido',qr:'Código QR',texto:'Texto libre'};
+const DEFAULT_TICKETS={
+  caja:{qr:null,blocks:[
+    {id:'b1',type:'logo',show:true,align:'center'},
+    {id:'b2',type:'negocio',show:true,align:'center',size:'lg',bold:true},
+    {id:'b3',type:'direccion',show:true,align:'center',size:'sm'},
+    {id:'b4',type:'tel',show:true,align:'center',size:'sm'},
+    {id:'b5',type:'separador',show:true},
+    {id:'b6',type:'folio',show:true,align:'left',size:'sm'},
+    {id:'b7',type:'fecha',show:true,align:'left',size:'sm'},
+    {id:'b8',type:'cliente',show:true,align:'left',size:'sm'},
+    {id:'b9',type:'mesa',show:true,align:'left',size:'sm'},
+    {id:'b10',type:'separador',show:true},
+    {id:'b11',type:'items',show:true,size:'md'},
+    {id:'b12',type:'separador',show:true},
+    {id:'b13',type:'total',show:true,align:'right',size:'lg',bold:true},
+    {id:'b14',type:'pago',show:true,align:'left',size:'sm'},
+    {id:'b15',type:'cajero',show:true,align:'center',size:'sm'},
+    {id:'b16',type:'texto',text:'*Precios incluyen impuestos*',show:true,align:'center',size:'sm'},
+    {id:'b17',type:'texto',text:'¡Gracias por su compra!',show:true,align:'center',size:'md',bold:true},
+    {id:'b18',type:'qr',show:true,align:'center'}
+  ]},
+  cocina:{qr:null,blocks:[
+    {id:'c1',type:'texto',text:'COMANDA · COCINA',show:true,align:'center',size:'xl',bold:true},
+    {id:'c2',type:'folio',show:true,align:'center',size:'md'},
+    {id:'c3',type:'fecha',show:true,align:'center',size:'sm'},
+    {id:'c4',type:'separador',show:true},
+    {id:'c5',type:'cliente',show:true,align:'left',size:'md',bold:true},
+    {id:'c6',type:'mesa',show:true,align:'left',size:'md',bold:true},
+    {id:'c7',type:'personas',show:true,align:'left',size:'md'},
+    {id:'c8',type:'separador',show:true},
+    {id:'c9',type:'items_cocina',show:true,size:'xl'},
+    {id:'c10',type:'separador',show:true},
+    {id:'c11',type:'notas',show:true,align:'left',size:'md'}
+  ]}
 };
+let ticketsCache={};
+function getTickets(which){
+  const d=JSON.parse(JSON.stringify(DEFAULT_TICKETS[which]||DEFAULT_TICKETS.caja));
+  const c=ticketsCache&&ticketsCache[which];
+  if(c&&Array.isArray(c.blocks)&&c.blocks.length){d.blocks=c.blocks;}
+  if(c&&typeof c.qr!=='undefined')d.qr=c.qr;
+  return d;
+}
+function tkAlign(a){return a==='center'?'center':a==='right'?'right':'left';}
+function ticketItemsHTML(o,cocina,fs){
+  const items=o.items||[];
+  if(cocina){
+    const small=Math.max(12,parseInt(fs)-8)+'px';
+    return items.map(i=>{
+      let h=`<div style="font-size:${fs};font-weight:bold;margin:4px 0">${i.qty}x ${itemLabel(i)}</div>`;
+      if(i.note)h+=`<div style="font-size:${small};padding-left:10px;margin-bottom:2px">• ${i.note}</div>`;
+      (i.extras||[]).forEach(e=>{h+=`<div style="font-size:${small};padding-left:10px">+ ${e.name}</div>`;});
+      return h;
+    }).join('');
+  }
+  const rows=items.map(i=>`<tr><td style="font-size:${fs};padding:2px 0;vertical-align:top">${i.qty}x ${itemLabel(i)}${i.note?'<br><span style="font-size:11px">• '+i.note+'</span>':''}${(i.extras||[]).map(e=>'<br><span style="font-size:11px">+ '+e.name+' '+money(e.price)+'</span>').join('')}${i.discount&&i.discount.type?'<br><span style="font-size:11px">'+discLabel(i.discount)+' -'+money(lineDiscount(i))+'</span>':''}</td><td style="text-align:right;vertical-align:top;font-size:${fs}">${money(lineTotal(i))}</td></tr>`).join('');
+  return `<table style="width:100%;border-collapse:collapse">${rows}</table>`;
+}
+function ticketBlockHTML(b,o,which){
+  if(b.show===false)return '';
+  const al=tkAlign(b.align);
+  const fs=TK_SIZES[b.size||'md']||TK_SIZES.md;
+  const st=`text-align:${al};font-size:${fs};${b.bold?'font-weight:bold;':''}margin:2px 0;word-wrap:break-word`;
+  const wrap=(h,s2)=>`<div style="${s2||st}">${h}</div>`;
+  switch(b.type){
+    case 'logo': return `<div style="text-align:${al};margin:2px 0"><img src="log.png" style="max-width:62%;max-height:90px" onerror="this.style.display='none'"></div>`;
+    case 'negocio': return wrap(BIZ.name);
+    case 'direccion': return BIZ.addr.map(l=>wrap(l)).join('');
+    case 'tel': return BIZ.tel?wrap('Tel: '+BIZ.tel):'';
+    case 'separador': return `<div style="border-top:1px dashed #000;margin:5px 0"></div>`;
+    case 'folio': return wrap('Ticket #'+String(o.id).slice(-4));
+    case 'fecha': return wrap(fmtDateTime(o.paidAt||o.createdAt));
+    case 'cliente': return wrap('Cliente: '+(o.table||'Público en general'));
+    case 'mesa': return o.mesa?wrap('Mesa: '+o.mesa):'';
+    case 'personas': return o.personas?wrap('Personas: '+o.personas):'';
+    case 'items': return `<div style="text-align:left">${ticketItemsHTML(o,false,fs)}</div>`;
+    case 'items_cocina': return `<div style="text-align:left">${ticketItemsHTML(o,true,fs)}</div>`;
+    case 'total': return wrap('TOTAL   '+money(o.total),`text-align:${al};font-size:${fs};font-weight:bold;margin:3px 0`);
+    case 'pago': { if(!o.paymentMethod)return ''; let h='Pago: '+metodoLabel(o.paymentMethod); if(o.paymentMethod==='efectivo'&&+o.paidCash){h+='<br>Efectivo: '+money(o.paidCash)+' · Cambio: '+money(o.paidChange||0);} return wrap(h); }
+    case 'cajero': return wrap('Cajero: '+(o.paidBy||userLabel()||'—'));
+    case 'notas': return o.notes?wrap('Notas: '+o.notes):'';
+    case 'qr': { const q=getTickets(which).qr; return q?`<div style="text-align:${al};margin-top:6px"><img src="${q}" style="width:120px;height:120px"></div>`:''; }
+    case 'texto': return b.text?wrap(b.text):'';
+    default: return '';
+  }
+}
+function ticketInner(o,which){ return (getTickets(which).blocks||[]).map(b=>ticketBlockHTML(b,o,which)).join(''); }
+let TK_AUTOCLOSE=true;
+function ticketHTML(o,which){
+  which=which||'caja';
+  return `<html><head><meta charset="utf-8"><title>${which==='cocina'?'Comanda':'Ticket'} #${String(o.id).slice(-4)}</title><style>
+    @page{size:58mm auto;margin:0}
+    *{font-family:'Courier New',monospace;color:#000!important}
+    body{width:56mm;margin:0 auto;padding:6px 3px;color:#000}
+    img{max-width:100%}
+  </style></head><body onload="setTimeout(function(){window.print();${TK_AUTOCLOSE?'setTimeout(function(){window.close();},700);':''}},350)">${ticketInner(o,which)}</body></html>`;
+}
+function openPrintWindow(html){
+  const w=window.open('','_blank','width=340,height=650');
+  if(!w){showToast('Permite ventanas emergentes para imprimir');return null;}
+  w.document.write(html);w.document.close();return w;
+}
+window.printTicket=function(id){const o=ordersCache[id];if(!o)return;openPrintWindow(ticketHTML(o,'caja'));};
+window.printComanda=function(id){const o=ordersCache[id];if(!o)return;openPrintWindow(ticketHTML(o,'cocina'));};
+
+/* ---- Auto-impresión de comandas (kiosk-printing) ---- */
+const APP_START=Date.now();
+let PRINTED=new Set();
+try{PRINTED=new Set(JSON.parse(localStorage.getItem('pk_printed')||'[]'));}catch(e){}
+function savePrinted(){try{localStorage.setItem('pk_printed',JSON.stringify([...PRINTED].slice(-400)));}catch(e){}}
+function autoPrintOn(){try{return localStorage.getItem('pk_autoprint')==='1';}catch(e){return false;}}
+window.toggleAutoPrint=function(el){try{localStorage.setItem('pk_autoprint',el.checked?'1':'0');}catch(e){}showToast(el.checked?'Auto-impresión de comandas ACTIVADA':'Auto-impresión desactivada');};
+function autoPrintNewOrders(){
+  if(!autoPrintOn())return;
+  getOrders().forEach(o=>{
+    if(!o||o.status==='cancelado')return;
+    const t=o.createdAt?new Date(o.createdAt).getTime():0;
+    if(t>=APP_START && !PRINTED.has(o.id)){ PRINTED.add(o.id); savePrinted(); printComanda(o.id); }
+  });
+}
+
+/* ---- Editor de tickets (Config) ---- */
+let TK_EDIT=null, TK_WHICH='caja';
+const TK_SAMPLE={id:1234,table:'Juan Pérez',mesa:'5',personas:2,paidBy:'aldo',createdAt:new Date().toISOString(),paymentMethod:'efectivo',paidCash:250,paidChange:20,total:230,notes:'Sin cebolla, término medio',items:[{name:'Especial',size:'Doble',qty:2,price:100,note:'bien cocida',extras:[{name:'Tira de Tocino',price:12}]},{name:'Papas Gajo',qty:1,price:60}]};
+function renderTicketEditor(){
+  const host=document.getElementById('tk-blocks'); if(!host)return;
+  const sel=document.getElementById('tk-which'); TK_WHICH=sel?sel.value:'caja';
+  if(!TK_EDIT||TK_EDIT._which!==TK_WHICH){ const g=getTickets(TK_WHICH); TK_EDIT={_which:TK_WHICH,qr:g.qr||null,blocks:JSON.parse(JSON.stringify(g.blocks||[]))}; }
+  const alignBtn=(b,i,val,ic)=>`<button onclick="tkAlign2(${i},'${val}')" class="tk-mini ${(b.align||'left')===val?'on':''}"><i class="fas ${ic}"></i></button>`;
+  host.innerHTML=TK_EDIT.blocks.map((b,i)=>{
+    const isText=b.type==='texto';
+    const sizeSel=`<select class="inp" style="width:auto;padding:.2rem .4rem;font-size:.75rem" onchange="tkSize(${i},this.value)">${['sm','md','lg','xl'].map(z=>`<option value="${z}" ${(b.size||'md')===z?'selected':''}>${z.toUpperCase()}</option>`).join('')}</select>`;
+    return `<div class="rounded-lg p-2 mb-2" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-1">
+          <button onclick="tkMove(${i},-1)" class="tk-mini"><i class="fas fa-chevron-up"></i></button>
+          <button onclick="tkMove(${i},1)" class="tk-mini"><i class="fas fa-chevron-down"></i></button>
+          <span class="text-sm ${b.show===false?'text-white/30 line-through':''}">${isText?('“'+(b.text||'')+'”'):TK_LABELS[b.type]||b.type}</span>
+        </div>
+        <div class="flex items-center gap-1 flex-wrap">
+          ${b.type!=='separador'?alignBtn(b,i,'left','fa-align-left')+alignBtn(b,i,'center','fa-align-center')+alignBtn(b,i,'right','fa-align-right'):''}
+          ${b.type!=='separador'?sizeSel:''}
+          <button onclick="tkBold(${i})" class="tk-mini ${b.bold?'on':''}"><i class="fas fa-bold"></i></button>
+          <button onclick="tkShow(${i})" class="tk-mini ${b.show!==false?'on':''}" title="Mostrar/ocultar"><i class="fas ${b.show!==false?'fa-eye':'fa-eye-slash'}"></i></button>
+          ${isText?`<button onclick="tkDel(${i})" class="tk-mini" style="color:#f87171"><i class="fas fa-trash"></i></button>`:''}
+        </div>
+      </div>
+      ${isText?`<input class="inp mt-2" style="font-size:.8rem" value="${(b.text||'').replace(/"/g,'&quot;')}" oninput="tkTextEdit(${i},this.value)">`:''}
+    </div>`;
+  }).join('');
+  ticketPreview();
+}
+function ticketPreview(){ const p=document.getElementById('tk-preview'); if(!p||!TK_EDIT)return; const save=ticketsCache[TK_WHICH]; ticketsCache[TK_WHICH]={qr:TK_EDIT.qr,blocks:TK_EDIT.blocks}; p.innerHTML=ticketInner(TK_SAMPLE,TK_WHICH); ticketsCache[TK_WHICH]=save; }
+window.tkAlign2=function(i,v){TK_EDIT.blocks[i].align=v;renderTicketEditor();};
+window.tkSize=function(i,v){TK_EDIT.blocks[i].size=v;renderTicketEditor();};
+window.tkBold=function(i){TK_EDIT.blocks[i].bold=!TK_EDIT.blocks[i].bold;renderTicketEditor();};
+window.tkShow=function(i){TK_EDIT.blocks[i].show=TK_EDIT.blocks[i].show===false;renderTicketEditor();};
+window.tkMove=function(i,d){const j=i+d;if(j<0||j>=TK_EDIT.blocks.length)return;const t=TK_EDIT.blocks[i];TK_EDIT.blocks[i]=TK_EDIT.blocks[j];TK_EDIT.blocks[j]=t;renderTicketEditor();};
+window.tkTextEdit=function(i,v){TK_EDIT.blocks[i].text=v;ticketPreview();};
+window.tkDel=function(i){TK_EDIT.blocks.splice(i,1);renderTicketEditor();};
+window.tkAddText=function(){TK_EDIT.blocks.push({id:'t'+Date.now(),type:'texto',text:'Texto nuevo',show:true,align:'center',size:'md'});renderTicketEditor();};
+window.tkUploadQR=function(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{TK_EDIT.qr=e.target.result;ticketPreview();showToast('QR cargado (dale Guardar)');};r.readAsDataURL(f);};
+window.saveTickets=function(){ if(!TK_EDIT)return; db.ref('ticketConfig/'+TK_WHICH).set({qr:TK_EDIT.qr||null,blocks:TK_EDIT.blocks}); showToast('Ticket guardado ✓'); };
+window.tkTestPrint=function(){ openPrintWindow(ticketHTML(TK_SAMPLE,TK_WHICH)); };
 
 /* ============ POS: Nueva orden / Editar (personal) ============ */
-const EXTRAS_PRESET=['Esencia de Lavanda','Vainilla','Mocha','Caramelo','Salted Chocolate Caramel','Jamón y Queso'];
+const EXTRAS_PRESET=['queso','carne','aguacte','cebolla','jamon','Jamón y Queso'];
 let posCart=[], posCat='alimentos', posSel={}, posEditId=null, extraLine=null;
 function posKey(n,s){return n+'|'+(s||'');}
 function posReset(){posCart=[];posCat='alimentos';posSel={};posEditId=null;
   document.getElementById('pos-name').value='';document.getElementById('pos-phone').value='';
+  const mm=document.getElementById('pos-mesa');if(mm)mm.value='';
+  const pp=document.getElementById('pos-personas');if(pp)pp.value='';
   const s=document.getElementById('pos-search');if(s)s.value='';posValidate();}
 window.openPOS=function(){
   posReset();
@@ -1311,6 +1538,8 @@ window.openPOSedit=function(id){
   posCart=(o.items||[]).map(i=>({name:i.name,price:+i.price,size:i.size||'',qty:i.qty,note:i.note||'',extras:(i.extras||[]).map(e=>({name:e.name,price:+e.price||0})),discount:i.discount&&i.discount.type?{...i.discount}:null}));
   document.getElementById('pos-name').value=o.table||'';
   document.getElementById('pos-phone').value=o.phone||'';
+  const mm=document.getElementById('pos-mesa');if(mm)mm.value=o.mesa||'';
+  const pp=document.getElementById('pos-personas');if(pp)pp.value=o.personas||'';
   document.getElementById('pos-title').innerHTML='<i class="fas fa-pen gold"></i> Editar orden #'+String(id).slice(-4);
   document.getElementById('pos-send-btn').innerHTML='<i class="fas fa-floppy-disk"></i> Guardar cambios';
   renderPOS(); posValidate(); openModal('posModal');
@@ -1320,10 +1549,9 @@ window.posSetCat=function(c){ posCat=c; const s=document.getElementById('pos-sea
 window.posPickSize=function(name,price,size){ posSel[slugify(name)]={price:+price,size}; renderPOS(); };
 window.posSetNote=function(idx,val){ if(posCart[idx])posCart[idx].note=val; };
 window.posValidate=function(){
-  const n=document.getElementById('pos-name'), ph=document.getElementById('pos-phone');
+  const n=document.getElementById('pos-name');
   if(!n)return;
-  n.style.borderColor=n.value.trim().length>0?'#22c55e':'#ef4444';
-  ph.style.borderColor=ph.value.trim().length>0?'#22c55e':'#ef4444';
+  n.style.borderColor=n.value.trim().length>0?'#22c55e':'rgba(255,255,255,.2)';
 };
 window.posAdd=function(name,price,size){
   size=size||''; const f=posCart.find(i=>posKey(i.name,i.size)===posKey(name,size));
@@ -1397,6 +1625,16 @@ function renderDiscCurrent(){
   else c.innerHTML='';
 }
 
+const DEFAULT_MODS=['Sin cebolla','Sin chile','Sin jitomate','Sin lechuga','Sin mayonesa','Sin catsup','Sin aguacate','Sin queso','Sin salsa','Bien cocida','Término medio','Extra salsa','Para llevar'];
+let modifiersCache=null;
+function getMods(){return (Array.isArray(modifiersCache)&&modifiersCache.length)?modifiersCache:DEFAULT_MODS;}
+window.posToggleMod=function(idx,label){
+  const it=posCart[idx];if(!it)return;
+  let parts=(it.note||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const i=parts.indexOf(label);
+  if(i>=0)parts.splice(i,1);else parts.push(label);
+  it.note=parts.join(', ');renderPOS();
+};
 function renderPOS(){
   document.getElementById('pos-cat-tabs').innerHTML=Object.keys(MENU_DATA).map(c=>
     `<button class="tab-btn ${c===posCat?'active':''}" onclick="posSetCat('${c}')">${SECTION_TITLES[c]}</button>`).join('');
@@ -1426,6 +1664,7 @@ function renderPOS(){
       ${(i.extras||[]).map(e=>`<div class="text-xs text-green-300/80 pl-2">+ ${e.name} · ${money(e.price)}</div>`).join('')}
       ${i.discount&&i.discount.type?`<div class="text-xs text-orange-300 pl-2">${discLabel(i.discount)} · −${money(lineDiscount(i))}</div>`:''}
       <input class="inp mt-1" style="padding:.25rem .5rem;font-size:.72rem" value="${(i.note||'').replace(/"/g,'&quot;')}" placeholder="Nota (ej. sin cebolla)" oninput="posSetNote(${idx},this.value)">
+      <div class="flex flex-wrap gap-1 mt-1">${getMods().map(m=>{const on=(i.note||'').split(',').map(x=>x.trim()).includes(m);return `<button class="text-[10px] px-2 py-0.5 rounded-full ${on?'bg-[#F26522] text-black font-semibold':'bg-white/10 text-white/70'}" onclick="posToggleMod(${idx},'${ea(m)}')">${m}</button>`;}).join('')}</div>
       <div class="flex gap-3 mt-1">
         <button class="text-[#F26522] text-xs hover:underline" onclick="openExtras(${idx})"><i class="fas fa-plus-circle"></i> Extras</button>
         <button class="text-orange-300 text-xs hover:underline" onclick="openDiscount(${idx})"><i class="fas fa-percent"></i> Descuento</button>
@@ -1438,25 +1677,26 @@ window.posSend=function(){
   const name=document.getElementById('pos-name').value.trim();
   if(!name){showToast('Escribe el nombre');posValidate();return;}
   const phone=document.getElementById('pos-phone').value.trim();
-  if(!phone){showToast('Escribe el teléfono');posValidate();return;}
+  const mesa=(document.getElementById('pos-mesa').value||'').trim();
+  const personas=+document.getElementById('pos-personas').value||0;
   const items=posCart.map(i=>{const o={name:i.name,price:+i.price,size:i.size||'',qty:i.qty,note:i.note||'',extras:(i.extras||[]).map(e=>({name:e.name,price:+e.price||0}))};if(i.discount&&i.discount.type)o.discount={label:i.discount.label||'',type:i.discount.type,value:+i.discount.value||0};return o;});
   const total=orderTotal(items);
   const by=userLabel();
   // Modo edición: actualiza la orden existente (misma comanda).
   if(posEditId){
-    db.ref('orders/'+posEditId).update({items,total,table:name,phone,editadoPor:by});
+    db.ref('orders/'+posEditId).update({items,total,table:name,phone,mesa,personas,editadoPor:by});
     closeModal('posModal');showToast('Orden actualizada ✓');posReset();return;
   }
   const id=Date.now();
   db.ref('orders').once('value').then(snap=>{
     const all=snap.val()||{};
-    const ex=Object.values(all).find(o=>o&&o.table&&norm(o.table)===norm(name)&&o.status!=='cobrado'&&o.status!=='cancelado');
+    const ex=Object.values(all).find(o=>{if(!o||o.status==='cobrado'||o.status==='cancelado')return false;if(mesa)return String(o.mesa||'')===String(mesa);return o.table&&norm(o.table)===norm(name);});
     if(ex){
       const merged=Array.isArray(ex.items)?ex.items.map(i=>({...i})):[];
       items.forEach(c=>{const f=merged.find(i=>posKey(i.name,i.size)===posKey(c.name,c.size));if(f){f.qty+=c.qty;if(c.note)f.note=c.note;if(c.extras&&c.extras.length)f.extras=(f.extras||[]).concat(c.extras);}else merged.push({...c});});
-      return db.ref('orders/'+ex.id).update({items:merged,total:orderTotal(merged),status:'nuevo',phone:phone||ex.phone||''}).then(()=>'Se sumó al pedido de '+ex.table+' 🍞');
+      return db.ref('orders/'+ex.id).update({items:merged,total:orderTotal(merged),status:'nuevo',phone:phone||ex.phone||'',mesa:mesa||ex.mesa||'',personas:personas||ex.personas||0}).then(()=>'Se sumó al pedido de '+(ex.mesa?('Mesa '+ex.mesa):ex.table)+' 🍞');
     }
-    return db.ref('orders/'+id).set({id,table:name,phone,notes:'',items,total,status:'nuevo',createdAt:new Date().toISOString(),createdBy:by}).then(()=>'¡Orden enviada a cocina! 🍞');
+    return db.ref('orders/'+id).set({id,table:name,phone,mesa,personas,notes:'',items,total,status:'nuevo',createdAt:new Date().toISOString(),createdBy:by}).then(()=>'¡Orden enviada a cocina! 🍞');
   }).then(msg=>{posReset();closeModal('posModal');showToast(msg);})
    .catch(e=>{console.error(e);showToast('Error al enviar la orden');});
 };
@@ -1627,17 +1867,107 @@ window.saveCosts=function(){
 };
 
 /* ============ REPORTES ============ */
+/* ---- Rango de fechas personalizado ---- */
+window.repRangeChanged=function(){
+  const r=document.getElementById('rep-range').value;
+  const box=document.getElementById('rep-custom');
+  const on=r==='custom';
+  if(box)box.style.display=on?'flex':'none';
+  if(on){
+    const f=document.getElementById('rep-from'), t=document.getElementById('rep-to');
+    if(f&&!f.value)f.value=todayStr().slice(0,8)+'01';
+    if(t&&!t.value)t.value=todayStr();
+  }
+  renderReportes();
+};
+function repInRange(v){
+  const sel=document.getElementById('rep-range'); if(!sel)return true;
+  const r=sel.value;
+  if(r==='custom'){
+    const f=(document.getElementById('rep-from').value||'');
+    const t=(document.getElementById('rep-to').value||'');
+    const d=dayStr(v); if(!d)return false;
+    if(f&&d<f)return false;
+    if(t&&d>t)return false;
+    return true;
+  }
+  return inRange(v,r);
+}
+function updatePeriodLabel(){
+  const el=document.getElementById('rep-period'); if(!el)return;
+  const r=document.getElementById('rep-range').value;
+  const fmt=s=>s?s.split('-').reverse().join('/'):'—';
+  let txt='';
+  if(r==='today')txt='Mostrando: hoy, '+fmt(todayStr());
+  else if(r==='week')txt='Mostrando: últimos 7 días';
+  else if(r==='month')txt='Mostrando: este mes';
+  else if(r==='all')txt='Mostrando: todo el historial';
+  else if(r==='custom'){const f=document.getElementById('rep-from').value,t=document.getElementById('rep-to').value;txt='Mostrando: del '+fmt(f)+' al '+fmt(t);}
+  el.textContent=txt;
+}
+/* ---- Comparativa semana vs semana ---- */
+function renderCompare(){
+  const host=document.getElementById('rep-compare'); if(!host)return;
+  const sales=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt);
+  const dayTot={};
+  sales.forEach(o=>{const d=dayStr(o.paidAt);if(d)dayTot[d]=(dayTot[d]||0)+o.total;});
+  const now=Date.now(); const rows=[];
+  for(let i=6;i>=0;i--){
+    const dtThis=new Date(now-i*86400000), dtLast=new Date(now-(i+7)*86400000);
+    const dThis=tzDateStr(dtThis), dLast=tzDateStr(dtLast);
+    rows.push({dtThis,tv:dayTot[dThis]||0,lv:dayTot[dLast]||0});
+  }
+  const thisTot=rows.reduce((s,r)=>s+r.tv,0), lastTot=rows.reduce((s,r)=>s+r.lv,0);
+  const mx=Math.max(1,...rows.map(r=>Math.max(r.tv,r.lv)));
+  const delta=thisTot-lastTot;
+  const pct=lastTot>0?Math.round(delta/lastTot*100):(thisTot>0?100:0);
+  const gain=delta>=0;
+  const badge=`<span style="background:${gain?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)'};color:${gain?'#4ade80':'#f87171'};padding:5px 14px;border-radius:99px;font-weight:700;font-size:1rem;white-space:nowrap"><i class="fas fa-arrow-${gain?'up':'down'}"></i> ${gain?'+':''}${pct}% · ${gain?'+':'−'}${money(Math.abs(delta))}</span>`;
+  const chart=rows.map(r=>{
+    const wd=new Intl.DateTimeFormat('es-MX',{timeZone:TZ,weekday:'short'}).format(r.dtThis).replace('.','');
+    const dnum=new Intl.DateTimeFormat('es-MX',{timeZone:TZ,day:'2-digit'}).format(r.dtThis);
+    const hThis=Math.round(r.tv/mx*100), hLast=Math.round(r.lv/mx*100);
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0">
+      <div style="height:120px;display:flex;align-items:flex-end;gap:3px;width:100%;justify-content:center">
+        <div title="Semana pasada: ${money(r.lv)}" class="cmp-bar" style="width:38%;height:${hLast}%;min-height:${r.lv?'3px':'0'};background:rgba(255,255,255,.22)"></div>
+        <div title="Esta semana: ${money(r.tv)}" class="cmp-bar" style="width:38%;height:${hThis}%;min-height:${r.tv?'3px':'0'};background:#F26522"></div>
+      </div>
+      <div style="font-size:.62rem;text-align:center;line-height:1.15;color:rgba(255,255,255,.55);text-transform:capitalize">${wd}<br>${dnum}</div>
+    </div>`;
+  }).join('');
+  host.innerHTML=`
+    <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+      <div class="flex gap-6 flex-wrap">
+        <div><p class="text-white/40 text-xs uppercase tracking-wider">Esta semana</p><p class="stat-num gold">${money(thisTot)}</p></div>
+        <div><p class="text-white/40 text-xs uppercase tracking-wider">Semana pasada</p><p class="stat-num text-white/60">${money(lastTot)}</p></div>
+      </div>
+      <div class="text-right"><p class="text-white/40 text-xs uppercase tracking-wider mb-1">${gain?'Vas ganando 🎉':'Vas a la baja'}</p>${badge}</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-end">${chart}</div>
+    <div class="flex gap-5 justify-center mt-3 text-xs text-white/50">
+      <span><i class="fas fa-square" style="color:#F26522"></i> Esta semana</span>
+      <span><i class="fas fa-square" style="color:rgba(255,255,255,.3)"></i> Semana pasada</span>
+    </div>`;
+}
+/* ---- Ticket a detalle ---- */
+let TICKET_VIEW_ID=null;
+window.openTicketDetail=function(id){const o=ordersCache[id];if(!o)return;TICKET_VIEW_ID=id;const el=document.getElementById('ticket-detail');if(el)el.innerHTML=ticketInner(o,'caja');openModal('ticketModal');};
+window.printTicketFromModal=function(){if(TICKET_VIEW_ID!=null)printTicket(TICKET_VIEW_ID);};
+window.shareTicketFromModal=function(){if(TICKET_VIEW_ID!=null)shareTicket(TICKET_VIEW_ID);};
+
 function renderReportes(){
   const range=document.getElementById('rep-range').value;
+  updatePeriodLabel();
+  renderCompare();
   const costs=getCosts();
-  const sales=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt&&inRange(o.paidAt,range));
+  const sales=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt&&repInRange(o.paidAt));
   const ventas=sales.reduce((s,o)=>s+o.total,0);
   let cogs=0;const prod={};const met={efectivo:0,tarjeta:0,transferencia:0};
   sales.forEach(o=>{
     met[o.paymentMethod]=(met[o.paymentMethod]||0)+o.total;
     o.items.forEach(i=>{cogs+=(costs[i.name]||0)*i.qty;prod[i.name]=(prod[i.name]||0)+i.price*i.qty;});
   });
-  const gastos=getExp().filter(e=>inRange(e.fecha,range)).reduce((s,e)=>s+ (+e.monto),0);
+  const gastos=getExp().filter(e=>repInRange(e.fecha)).reduce((s,e)=>s+ (+e.monto),0);
   const ganancia=ventas-cogs-gastos;
   const margen=ventas?Math.round((ganancia/ventas)*100):0;
   document.getElementById('rep-ventas').textContent=money(ventas);
@@ -1656,7 +1986,7 @@ function renderReportes(){
     <div class="mb-2"><div class="flex justify-between text-sm mb-1"><span>${n}</span><span class="gold font-semibold">${money(v)}</span></div>
     <div class="h-1.5 bg-white/10 rounded-full"><div class="h-1.5 bg-gold rounded-full" style="width:${v/maxc*100}%"></div></div></div>`).join(''):'<p class="text-white/30 text-sm py-4 text-center">Sin ventas.</p>';
   // cortes de caja del periodo
-  const cortes=Object.values(cortesCache).filter(Boolean).filter(x=>inRange(x.fecha||x.ts,range)).sort((a,b)=>(b.ts||'')<(a.ts||'')?-1:1);
+  const cortes=Object.values(cortesCache).filter(Boolean).filter(x=>repInRange(x.fecha||x.ts)).sort((a,b)=>(b.ts||'')<(a.ts||'')?-1:1);
   document.getElementById('rep-cortes').innerHTML=cortes.length?cortes.map(x=>`
     <div class="flex items-center justify-between text-sm border-b border-white/5 py-1.5">
       <div><span class="font-medium">${fmtDateTime(x.ts)}</span> · <span class="text-white/60">${x.user||'—'}</span></div>
@@ -1666,14 +1996,15 @@ function renderReportes(){
   const q=norm((document.getElementById('rep-ticket-search')||{}).value||'');
   const tickets=sales.filter(o=>!q||norm(o.table).includes(q)).sort((a,b)=>(b.paidAt||'')<(a.paidAt||'')?-1:1);
   document.getElementById('rep-tickets-empty').classList.toggle('hidden',tickets.length>0);
-  document.getElementById('rep-tickets-body').innerHTML=tickets.map(o=>`<tr class="border-b border-white/5">
+  document.getElementById('rep-tickets-body').innerHTML=tickets.map(o=>`<tr class="border-b border-white/5 cursor-pointer hover:bg-white/5" onclick="openTicketDetail(${o.id})" title="Ver ticket a detalle">
     <td class="p-2 text-white/60">${fmtDateTime(o.paidAt)}</td>
     <td class="p-2 font-medium">${o.table||'—'}</td>
     <td class="p-2 text-white/60">${o.paidBy||'—'}</td>
     <td class="p-2 text-right gold">${money(o.total)}</td>
     <td class="p-2 text-center"><div class="flex gap-1 justify-center">
-      <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="shareTicket(${o.id})" title="PDF"><i class="fab fa-whatsapp text-green-400"></i></button>
-      <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="printTicket(${o.id})" title="Imprimir"><i class="fas fa-print"></i></button>
+      <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();openTicketDetail(${o.id})" title="Ver ticket"><i class="fas fa-eye"></i></button>
+      <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();shareTicket(${o.id})" title="PDF"><i class="fab fa-whatsapp text-green-400"></i></button>
+      <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();printTicket(${o.id})" title="Imprimir"><i class="fas fa-print"></i></button>
     </div></td></tr>`).join('');
   // personas (clientes distintos que compraron en el periodo)
   document.getElementById('rep-personas').textContent=new Set(sales.map(o=>norm(o.table))).size;
@@ -1697,7 +2028,7 @@ function renderReportes(){
     <div class="mb-2"><div class="flex justify-between text-sm mb-1"><span>${n}</span><span class="font-semibold">${money(v)} <span class="text-white/40 text-xs">${Math.round(v/totMet*100)}%</span></span></div>
     <div class="h-1.5 bg-white/10 rounded-full"><div class="h-1.5 rounded-full" style="width:${v/totMet*100}%;background:${c}"></div></div></div>`).join('');
   // gastos
-  const exp=getExp().filter(e=>inRange(e.fecha,range)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  const exp=getExp().filter(e=>repInRange(e.fecha)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   document.getElementById('gastos-empty').classList.toggle('hidden',exp.length>0);
   document.getElementById('gastos-body').innerHTML=exp.map(e=>`<tr class="border-b border-white/5">
     <td class="p-2 text-white/60">${e.fecha}</td><td class="p-2">${e.concepto}</td>
@@ -1747,9 +2078,12 @@ function setupListeners(){
     ordersCache=s.val()||{};
     const n=getOrders().filter(o=>o.status==='nuevo').length;
     if(!firstSnapshot && n>lastNew){beep();showToast('🔔 ¡Nuevo pedido!');}
+    if(!firstSnapshot) autoPrintNewOrders();
     lastNew=n;firstSnapshot=false;
     renderAll();
   });
+  db.ref('ticketConfig').on('value',s=>{ticketsCache=s.val()||{};if(activeTab==='config'&&typeof renderTicketEditor==='function'){/*no reset*/}});
+  db.ref('modifiers').on('value',s=>{const v=s.val();modifiersCache=Array.isArray(v)?v:(v?Object.values(v):null);if(activeTab==='config'&&typeof renderModsEditor==='function')renderModsEditor();});
   db.ref('inventory').on('value',s=>{invCache=s.val()||{};renderAll();});
   db.ref('expenses').on('value',s=>{expCache=s.val()||{};renderAll();});
   db.ref('productCosts').on('value',s=>{
@@ -1866,6 +2200,8 @@ setInterval(tick,1000);tick();
 
 applySession();
 renderAll();
+// Sincroniza el switch de auto-impresión con lo guardado en esta compu
+try{const _ap=document.getElementById('autoprint-toggle');if(_ap)_ap.checked=(localStorage.getItem('pk_autoprint')==='1');}catch(e){}
 </script>
 </body>
 </html>
