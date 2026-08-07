@@ -49,6 +49,8 @@
         .size-btn{border:1px solid rgba(242,101,34,.4);border-radius:8px;padding:4px 12px;font-size:.78rem;cursor:pointer;transition:all .2s;background:transparent;color:#fff}
         .size-btn.selected{background:#F26522;color:#000;border-color:#F26522;font-weight:600}
         .add-btn{transition:transform .15s}.add-btn:hover{transform:scale(1.1)}
+        .mod-btn{border:1px solid rgba(242,101,34,.4);border-radius:99px;padding:2px 10px;font-size:.72rem;color:#fff;background:transparent;cursor:pointer}.mod-btn.sel{background:#F26522;color:#000;font-weight:600}
+        .mesa-num{width:38px;height:38px;border-radius:10px;border:1px solid rgba(242,101,34,.4);color:#fff;background:transparent;font-weight:700;font-size:.85rem}.mesa-num.sel{background:#F26522;color:#000;border-color:#F26522}
     </style>
 </head>
 <body class="overflow-x-hidden">
@@ -88,12 +90,23 @@
     </div>
     <div class="px-5 py-4 border-b border-white/10 space-y-3">
         <div>
+            <label class="block text-white/60 text-xs uppercase tracking-widest mb-2">Mesa <span class="text-[#F26522]">*</span></label>
+            <div id="mesa-picker" class="flex flex-wrap gap-1 mb-2"></div>
+            <input id="mesa-input" type="number" min="1" inputmode="numeric" placeholder="N° de mesa" oninput="syncMesaPicker()" class="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-[#F26522]/60 placeholder-white/30">
+        </div>
+        <div>
             <label class="block text-white/60 text-xs uppercase tracking-widest mb-2">Nombre <span class="text-[#F26522]">*</span></label>
             <input id="table-input" type="text" placeholder="Tu nombre" class="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-[#F26522]/60 placeholder-white/30">
         </div>
-        <div>
-            <label class="block text-white/60 text-xs uppercase tracking-widest mb-2">Celular <span class="text-[#F26522]">*</span></label>
-            <input id="phone-input" type="tel" inputmode="numeric" placeholder="10 dígitos" class="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-[#F26522]/60 placeholder-white/30">
+        <div class="grid grid-cols-2 gap-2">
+            <div>
+                <label class="block text-white/60 text-xs uppercase tracking-widest mb-2">👥 Personas</label>
+                <input id="personas-input" type="number" min="1" inputmode="numeric" placeholder="1" class="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-[#F26522]/60 placeholder-white/30">
+            </div>
+            <div>
+                <label class="block text-white/60 text-xs uppercase tracking-widest mb-2">Celular <span class="text-white/30 normal-case">(opc)</span></label>
+                <input id="phone-input" type="tel" inputmode="numeric" placeholder="10 díg." class="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-[#F26522]/60 placeholder-white/30">
+            </div>
         </div>
     </div>
     <div id="cart-items" class="px-5 py-4 space-y-2 flex-1">
@@ -288,21 +301,43 @@ sections.forEach((sec,index)=>{
 function slugify(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'-');}
 function ea(s){return (s||'').toString().replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 
+const DEFAULT_MODS=['Sin cebolla','Sin chile','Sin jitomate','Sin lechuga','Sin mayonesa','Sin catsup','Sin aguacate','Sin queso','Sin salsa','Bien cocida','Término medio','Extra salsa','Para llevar'];
+let modifiersCache=null;
+function getMods(){return (Array.isArray(modifiersCache)&&modifiersCache.length)?modifiersCache:DEFAULT_MODS;}
+try{ if(typeof db!=='undefined'&&db){ db.ref('modifiers').on('value',s=>{const v=s.val();modifiersCache=Array.isArray(v)?v:(v?Object.values(v):null);const modal=document.getElementById('modal');if(currentSec&&modal&&!modal.classList.contains('hidden'))openModal(currentSec);}); } }catch(e){}
+window.menuToggleMod=function(slug,label){
+  const m=MODAL[slug];if(!m)return;
+  let parts=(m.note||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const i=parts.indexOf(label);
+  if(i>=0)parts.splice(i,1);else parts.push(label);
+  m.note=parts.join(', ');
+  const box=document.getElementById('mods-'+slug);
+  if(box)box.querySelectorAll('.mod-btn').forEach(b=>b.classList.toggle('sel',parts.includes(b.textContent.trim())));
+  renderItemControl(slug);
+};
+// Selector rápido de número de mesa
+function buildMesaPicker(){
+  const host=document.getElementById('mesa-picker'); if(!host)return;
+  host.innerHTML=Array.from({length:20},(_,i)=>i+1).map(n=>`<button type="button" class="mesa-num" onclick="pickMesa(${n})">${n}</button>`).join('');
+}
+window.pickMesa=function(n){document.getElementById('mesa-input').value=n;syncMesaPicker();};
+window.syncMesaPicker=function(){const v=(document.getElementById('mesa-input').value||'').trim();document.querySelectorAll('#mesa-picker .mesa-num').forEach(b=>b.classList.toggle('sel',b.textContent.trim()===v));};
+
 let MODAL={};
 function renderItemControl(slug){
     const el=document.getElementById('ctrl-'+slug);
     const m=MODAL[slug];
     if(!el||!m)return;
-    const key=m.name+'|'+(m.size||'');
-    const ci=cart.find(i=>(i.name+'|'+(i.size||''))===key);
+    const key=cartKey(m.name,m.size,m.note);
+    const ci=cart.find(i=>cartKey(i.name,i.size,i.note)===key);
     const qty=ci?ci.qty:0;
     if(qty<=0){
-        el.innerHTML=`<button class="add-btn bg-[#F26522] text-black w-9 h-9 rounded-full flex items-center justify-center font-bold text-xl" onclick="addToCart('${ea(m.name)}',${m.price},'${ea(m.desc)}','${ea(m.size||'')}')">+</button>`;
+        el.innerHTML=`<button class="add-btn bg-[#F26522] text-black w-9 h-9 rounded-full flex items-center justify-center font-bold text-xl" onclick="addToCart('${ea(m.name)}',${m.price},'${ea(m.desc)}','${ea(m.size||'')}','${ea(m.note||'')}')">+</button>`;
     }else{
         el.innerHTML=`<div class="flex items-center gap-2 bg-black/40 rounded-full px-1 py-0.5">
-            <button class="qty-btn bg-white/15 hover:bg-white/30 text-white" onclick="removeFromCart('${ea(m.name)}','${ea(m.size||'')}')">−</button>
+            <button class="qty-btn bg-white/15 hover:bg-white/30 text-white" onclick="removeFromCart('${ea(m.name)}','${ea(m.size||'')}','${ea(m.note||'')}')">−</button>
             <span class="text-[#F26522] font-bold w-6 text-center">${qty}</span>
-            <button class="qty-btn bg-[#F26522] text-black" onclick="addToCart('${ea(m.name)}',${m.price},'${ea(m.desc)}','${ea(m.size||'')}')">+</button>
+            <button class="qty-btn bg-[#F26522] text-black" onclick="addToCart('${ea(m.name)}',${m.price},'${ea(m.desc)}','${ea(m.size||'')}','${ea(m.note||'')}')">+</button>
         </div>`;
     }
 }
@@ -321,8 +356,9 @@ function openModal(sec){
         const sizesHtml=hasSizes?`<div class="flex gap-2 mt-2 flex-wrap" id="sizes-${slug}">`+item.sizes.map((s,i)=>`<button class="size-btn ${i===0?'selected':''}" onclick="selectSize('${slug}',${i},${s.price},'${ea(item.name)}','${ea(sizeName(s))}')">${s.label}</button>`).join('')+`</div>`:'';
         const displayPrice=hasSizes?item.sizes[0].price:item.price;
         const initSize=hasSizes?sizeName(item.sizes[0]):'';
-        MODAL[slug]={name:item.name,desc:item.desc||'',price:displayPrice,size:initSize};
-        return`<div class="flex justify-between items-start border-b border-white/15 pb-4 gap-4"><div class="flex-1"><span class="font-bold block">${item.name}</span>${item.desc?`<small class="text-white/60 block leading-snug mt-0.5">${item.desc}</small>`:''}${sizesHtml}</div><div class="flex items-center gap-3 flex-shrink-0"><span class="font-bold text-lg text-[#F26522]" id="price-${slug}">$${displayPrice}</span><div id="ctrl-${slug}"></div></div></div>`;
+        MODAL[slug]={name:item.name,desc:item.desc||'',price:displayPrice,size:initSize,note:''};
+        const modsHtml=getMods().length?`<div class="flex gap-1.5 mt-2 flex-wrap" id="mods-${slug}">`+getMods().map(mm=>`<button class="mod-btn" onclick="menuToggleMod('${slug}','${ea(mm)}')">${mm}</button>`).join('')+`</div>`:'';
+        return`<div class="flex justify-between items-start border-b border-white/15 pb-4 gap-4"><div class="flex-1"><span class="font-bold block">${item.name}</span>${item.desc?`<small class="text-white/60 block leading-snug mt-0.5">${item.desc}</small>`:''}${sizesHtml}${modsHtml}</div><div class="flex items-center gap-3 flex-shrink-0"><span class="font-bold text-lg text-[#F26522]" id="price-${slug}">$${displayPrice}</span><div id="ctrl-${slug}"></div></div></div>`;
     }).join('');
     content.innerHTML=`<h2 class="brand-font text-3xl sm:text-4xl font-bold text-center mb-6 text-[#F26522] tracking-wide">${sec.title}</h2><div class="space-y-4">${itemsHtml}</div>`;
     modal.classList.remove('hidden');
@@ -345,19 +381,19 @@ document.addEventListener('keydown',e=>{if(e.key==="Escape")closeModal();});
 
 // ==================== CARRITO ====================
 let cart=[];
-function cartKey(name,size){return name+'|'+(size||'');}
+function cartKey(name,size,note){return name+'|'+(size||'')+'|'+(note||'');}
 
-window.addToCart=function(name,price,desc,size){
-    size=size||'';
-    const existing=cart.find(i=>cartKey(i.name,i.size)===cartKey(name,size));
+window.addToCart=function(name,price,desc,size,note){
+    size=size||'';note=note||'';
+    const existing=cart.find(i=>cartKey(i.name,i.size,i.note)===cartKey(name,size,note));
     if(existing)existing.qty++;
-    else cart.push({name,price,desc,size,qty:1});
+    else cart.push({name,price,desc,size,note,qty:1});
     updateCartUI();
     showToast(`+ ${name}${size?' ('+size+')':''}`);
 };
 
-window.removeFromCart=function(name,size){
-    const idx=cart.findIndex(i=>cartKey(i.name,i.size)===cartKey(name,size||''));
+window.removeFromCart=function(name,size,note){
+    const idx=cart.findIndex(i=>cartKey(i.name,i.size,i.note)===cartKey(name,size||'',note||''));
     if(idx===-1)return;
     if(cart[idx].qty>1)cart[idx].qty--;
     else cart.splice(idx,1);
@@ -381,7 +417,7 @@ function updateCartUI(){
     document.getElementById('float-cart-total').textContent=`$${total}`;
     const el=document.getElementById('cart-items');
     if(cart.length===0){el.innerHTML=`<p class="text-white/30 text-sm text-center py-8">Tu carrito está vacío</p>`;refreshModalControls();return;}
-    el.innerHTML=cart.map(item=>`<div class="item-row py-3 flex items-center justify-between gap-3"><div class="flex-1 min-w-0"><p class="text-white text-sm font-medium truncate">${item.name}${item.size?` <span class="text-white/50">(${item.size})</span>`:''}</p><p class="text-[#F26522] text-xs">$${item.price} c/u</p></div><div class="flex items-center gap-2"><button class="qty-btn bg-white/10 hover:bg-white/20 text-white" onclick="removeFromCart('${ea(item.name)}','${ea(item.size||'')}')">−</button><span class="text-white font-bold w-5 text-center text-sm">${item.qty}</span><button class="qty-btn bg-[#F26522]/20 hover:bg-[#F26522]/40 text-[#F26522]" onclick="addToCart('${ea(item.name)}',${item.price},'','${ea(item.size||'')}')">+</button></div><span class="text-white font-bold text-sm w-14 text-right">$${item.price*item.qty}</span></div>`).join('');
+    el.innerHTML=cart.map(item=>`<div class="item-row py-3"><div class="flex items-center justify-between gap-3"><div class="flex-1 min-w-0"><p class="text-white text-sm font-medium truncate">${item.name}${item.size?` <span class="text-white/50">(${item.size})</span>`:''}</p><p class="text-[#F26522] text-xs">$${item.price} c/u</p></div><div class="flex items-center gap-2"><button class="qty-btn bg-white/10 hover:bg-white/20 text-white" onclick="removeFromCart('${ea(item.name)}','${ea(item.size||'')}','${ea(item.note||'')}')">−</button><span class="text-white font-bold w-5 text-center text-sm">${item.qty}</span><button class="qty-btn bg-[#F26522]/20 hover:bg-[#F26522]/40 text-[#F26522]" onclick="addToCart('${ea(item.name)}',${item.price},'','${ea(item.size||'')}','${ea(item.note||'')}')">+</button></div><span class="text-white font-bold text-sm w-14 text-right">$${item.price*item.qty}</span></div>${item.note?`<p class="text-yellow-200/80 text-[11px] mt-1 pl-1"><i class="fas fa-angle-right"></i> ${item.note}</p>`:''}</div>`).join('');
     refreshModalControls();
 }
 
@@ -393,40 +429,42 @@ function sendOrder(){
     if(cart.length===0){showToast('Agrega algo primero 😊');return;}
     const table=document.getElementById('table-input').value.trim();
     const phone=document.getElementById('phone-input').value.trim();
+    const mesa=(document.getElementById('mesa-input').value||'').trim();
+    const personas=+document.getElementById('personas-input').value||0;
+    if(!mesa){showToast('Elige el número de mesa 🍽️');return;}
     if(!table){showToast('Escribe tu nombre 🙂');return;}
-    if(phone.replace(/\D/g,'').length<10){showToast('Escribe un celular válido (10 dígitos) 📱');return;}
+    if(phone&&phone.replace(/\D/g,'').length<10){showToast('El celular debe tener 10 dígitos (o déjalo vacío) 📱');return;}
     if(typeof db==='undefined'||!db){showToast('⚠️ Falta configurar Firebase');return;}
     const newNotes=document.getElementById('order-notes').value.trim();
     const id=Date.now();
-    const items=cart.map(i=>({...i}));
+    const items=cart.map(i=>({name:i.name,price:i.price,size:i.size||'',note:i.note||'',qty:i.qty}));
     const norm=s=>(s||'').trim().toLowerCase();
     db.ref('orders').once('value').then(snap=>{
         const all=snap.val()||{};
-        const existing=Object.values(all).find(o=>o&&o.table&&norm(o.table)===norm(table)&&o.status!=='cobrado'&&o.status!=='cancelado');
+        const existing=Object.values(all).find(o=>o&&String(o.mesa||'')===String(mesa)&&o.status!=='cobrado'&&o.status!=='cancelado');
         if(existing){
             const merged=Array.isArray(existing.items)?existing.items.map(i=>({...i})):[];
             items.forEach(c=>{
-                const f=merged.find(i=>cartKey(i.name,i.size)===cartKey(c.name,c.size));
+                const f=merged.find(i=>cartKey(i.name,i.size,i.note)===cartKey(c.name,c.size,c.note));
                 if(f)f.qty+=c.qty; else merged.push({...c});
             });
             const total=merged.reduce((s,i)=>s+i.price*i.qty,0);
             const notes=[existing.notes,newNotes].filter(Boolean).join(' | ');
-            return db.ref('orders/'+existing.id).update({items:merged,total,status:'nuevo',phone:phone||existing.phone||'',notes})
-                     .then(()=>'¡Se sumó a tu pedido anterior! 🍔');
+            return db.ref('orders/'+existing.id).update({items:merged,total,status:'nuevo',phone:phone||existing.phone||'',personas:personas||existing.personas||0,table:table||existing.table,notes})
+                     .then(()=>'¡Se sumó a la Mesa '+mesa+'! 🍔');
         }else{
-            const order={id,table,phone,notes:newNotes,items,total:items.reduce((s,i)=>s+i.price*i.qty,0),status:'nuevo',createdAt:new Date().toISOString()};
+            const order={id,table,phone,mesa,personas,notes:newNotes,items,total:items.reduce((s,i)=>s+i.price*i.qty,0),status:'nuevo',createdAt:new Date().toISOString()};
             return db.ref('orders/'+id).set(order).then(()=>'¡Pedido enviado a cocina! 🍔');
         }
     }).then(msg=>{
         clearCart();
-        document.getElementById('table-input').value='';
-        document.getElementById('phone-input').value='';
         document.getElementById('order-notes').value='';
         closeCart();
         showToast(msg);
     }).catch(err=>{console.error(err);showToast('Error al enviar. Revisa tu conexión.');});
 }
 
+try{buildMesaPicker();}catch(e){}
 function showToast(msg){
     const t=document.getElementById('toast');
     t.textContent=msg;t.classList.add('show');
