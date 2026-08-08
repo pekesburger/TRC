@@ -55,17 +55,58 @@
 </head>
 <body class="overflow-x-hidden">
 
+<!-- ==================== LOGIN DE MESEROS ==================== -->
+<div id="mlogin" class="fixed inset-0 z-[400] flex items-center justify-center p-4" style="background:#0c0c0d;background-image:radial-gradient(circle at 50% 15%,rgba(242,101,34,.28),transparent 55%)">
+  <div class="w-full max-w-sm rounded-3xl border border-[#F26522]/30 p-8" style="background:#141416">
+    <div class="text-center mb-6">
+      <img src="logbug.png" class="h-16 mx-auto mb-3" onerror="this.style.display='none'">
+      <h1 class="brand-font text-2xl font-bold text-[#F26522]">Acceso Meseros</h1>
+      <p class="text-white/40 text-sm mt-1">Inicia sesión para tomar pedidos</p>
+    </div>
+    <div class="space-y-3">
+      <div><label class="text-xs text-white/50 uppercase tracking-widest">Usuario</label>
+        <input id="mlogin-user" autocomplete="off" autocapitalize="none" class="w-full mt-1 bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#F26522]/60" onkeydown="if(event.key==='Enter')document.getElementById('mlogin-pass').focus()"></div>
+      <div><label class="text-xs text-white/50 uppercase tracking-widest">Contraseña</label>
+        <input id="mlogin-pass" type="password" class="w-full mt-1 bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#F26522]/60" onkeydown="if(event.key==='Enter')meseroLogin()"></div>
+      <p id="mlogin-err" class="hidden text-red-400 text-sm"></p>
+      <button id="mlogin-btn" onclick="meseroLogin()" class="w-full py-3 rounded-xl font-bold text-lg mt-2" style="background:#F26522;color:#000"><i class="fas fa-right-to-bracket"></i> Entrar</button>
+      <p class="text-white/30 text-xs text-center mt-2">Los usuarios se crean en el panel de administración (Configuración → Nuevo usuario).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MIS MESAS ABIERTAS ==================== -->
+<div id="mis-mesas" class="modal fixed inset-0 z-[300] hidden flex items-start justify-center p-4 pt-24">
+  <div class="modal-content rounded-3xl w-full max-w-lg max-h-[80vh] overflow-y-auto border border-[#F26522]/30 p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="brand-font text-2xl text-[#F26522] font-bold">Mis mesas abiertas</h2>
+      <button onclick="closeMisMesas()" class="text-white/60 hover:text-white text-3xl leading-none transition">×</button>
+    </div>
+    <div id="mis-mesas-list"></div>
+  </div>
+</div>
+
 <header class="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/10">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-        <a href="index.html" class="flex items-center gap-2 text-white hover:text-orange-400 transition-colors">
-            <i class="fas fa-arrow-left text-2xl"></i>
-            <span class="text-sm font-medium tracking-wider hidden sm:block">REGRESAR AL INICIO</span>
-        </a>
-        <img src="logbug.png" alt="Peke's Burger" class="h-12 w-auto" onerror="this.style.display='none'">
-        <button onclick="openCart()" class="relative p-2">
-            <i class="fas fa-shopping-bag text-2xl text-white hover:text-[#F26522] transition-colors"></i>
-            <span id="cart-badge" class="cart-badge hidden">0</span>
-        </button>
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+            <span class="w-9 h-9 rounded-full bg-[#F26522]/20 text-[#F26522] flex items-center justify-center flex-shrink-0"><i class="fas fa-user"></i></span>
+            <div class="min-w-0 leading-tight">
+                <p class="text-[10px] text-white/40 uppercase tracking-widest">Mesero</p>
+                <p id="mesero-chip" class="text-sm font-semibold text-white truncate">—</p>
+            </div>
+            <button onclick="meseroLogout()" title="Cerrar sesión" class="text-white/40 hover:text-red-400 transition-colors ml-1"><i class="fas fa-right-from-bracket"></i></button>
+        </div>
+        <img src="logbug.png" alt="Peke's Burger" class="h-10 w-auto flex-shrink-0 hidden sm:block" onerror="this.style.display='none'">
+        <div class="flex items-center gap-1 flex-shrink-0">
+            <button onclick="openMisMesas()" class="relative px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition-colors">
+                <i class="fas fa-table-list text-[#F26522]"></i><span class="hidden sm:inline ml-1">Mis mesas</span>
+                <span id="mesas-badge" class="cart-badge hidden">0</span>
+            </button>
+            <button onclick="openCart()" class="relative p-2">
+                <i class="fas fa-shopping-bag text-2xl text-white hover:text-[#F26522] transition-colors"></i>
+                <span id="cart-badge" class="cart-badge hidden">0</span>
+            </button>
+        </div>
     </div>
 </header>
 
@@ -300,6 +341,80 @@ sections.forEach((sec,index)=>{
 
 function slugify(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'-');}
 function ea(s){return (s||'').toString().replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+function normStr(s){return (s||'').toString().trim().toLowerCase();}
+
+/* ==================== SESI\u00d3N DE MESERO ==================== */
+const OWNER_CREDS={user:'marce',pass:'shellsmarce1'};
+let MESERO=null;
+try{MESERO=JSON.parse(sessionStorage.getItem('pkMesero')||'null');}catch(e){}
+window.meseroLogin=function(){
+  const u=normStr(document.getElementById('mlogin-user').value);
+  const p=document.getElementById('mlogin-pass').value||'';
+  const err=document.getElementById('mlogin-err');
+  const show=m=>{err.textContent=m;err.classList.remove('hidden');};
+  if(!u||!p){show('Escribe tu usuario y contrase\u00f1a');return;}
+  if(typeof db==='undefined'||!db){show('Sin conexi\u00f3n. Revisa el internet.');return;}
+  const btn=document.getElementById('mlogin-btn');btn.disabled=true;btn.innerHTML='Entrando...';
+  db.ref('users').once('value').then(snap=>{
+    const users=snap.val()||{};
+    let m=null;
+    if(u===OWNER_CREDS.user&&p===OWNER_CREDS.pass)m={user:'marce',name:'Marce'};
+    else{const rec=users[u];if(rec&&String(rec.pass)===p)m={user:rec.user,name:rec.name||rec.user};}
+    btn.disabled=false;btn.innerHTML='<i class="fas fa-right-to-bracket"></i> Entrar';
+    if(!m){show('Usuario o contrase\u00f1a incorrectos');return;}
+    MESERO=m;try{sessionStorage.setItem('pkMesero',JSON.stringify(m));}catch(e){}
+    err.classList.add('hidden');
+    document.getElementById('mlogin-user').value='';document.getElementById('mlogin-pass').value='';
+    applyMeseroSession();
+    showToast('\u00a1Hola, '+m.name+'! \ud83d\udc4b');
+  }).catch(e=>{console.error(e);btn.disabled=false;btn.innerHTML='<i class="fas fa-right-to-bracket"></i> Entrar';show('Error de conexi\u00f3n. Intenta otra vez.');});
+};
+window.meseroLogout=function(){ if(!confirm('\u00bfCerrar tu sesi\u00f3n de mesero?'))return; MESERO=null;try{sessionStorage.removeItem('pkMesero');}catch(e){} applyMeseroSession(); };
+function applyMeseroSession(){
+  const logged=!!MESERO;
+  const ml=document.getElementById('mlogin'); if(ml)ml.classList.toggle('hidden',logged);
+  const chip=document.getElementById('mesero-chip'); if(chip)chip.textContent=logged?MESERO.name:'\u2014';
+  renderMyOrders();
+}
+
+/* ==================== MIS MESAS ABIERTAS ==================== */
+let MY_OPEN=[];
+function listenOpenOrders(){
+  if(typeof db==='undefined'||!db)return;
+  db.ref('orders').on('value',s=>{
+    const all=s.val()||{};
+    MY_OPEN=Object.values(all).filter(o=>o&&o.status!=='cobrado'&&o.status!=='cancelado');
+    renderMyOrders();
+  });
+}
+function myOrders(){ return MESERO?MY_OPEN.filter(o=>normStr(o.createdBy)===normStr(MESERO.name)):[]; }
+function renderMyOrders(){
+  const mine=myOrders();
+  const badge=document.getElementById('mesas-badge');
+  if(badge){badge.textContent=mine.length;badge.classList.toggle('hidden',mine.length===0);}
+  const host=document.getElementById('mis-mesas-list'); if(!host)return;
+  if(!mine.length){host.innerHTML='<p class="text-white/40 text-center py-10">No tienes mesas abiertas ahora.<br><span class="text-white/25 text-sm">Cuando env\u00edes un pedido aparecer\u00e1 aqu\u00ed.</span></p>';return;}
+  host.innerHTML=mine.slice().sort((a,b)=>(+a.mesa||0)-(+b.mesa||0)).map(o=>{
+    const items=(o.items||[]).map(i=>`<div class="flex justify-between text-sm text-white/70"><span>${i.qty}\u00d7 ${i.name}${i.size?' ('+i.size+')':''}</span><span>$${(+i.price||0)*(+i.qty||0)}</span></div>`).join('');
+    const st={nuevo:['En cocina','#f87171'],preparando:['Preparando','#fbbf24'],listo:['Listo','#4ade80']}[o.status]||[o.status,'#93c5fd'];
+    const tot=(o.items||[]).reduce((s,i)=>s+(+i.price||0)*(+i.qty||0),0);
+    return `<div class="rounded-2xl border border-white/10 p-4 mb-3" style="background:rgba(255,255,255,.03)">
+      <div class="flex items-center justify-between mb-2">
+        <span class="brand-font text-xl font-bold text-white">Mesa ${o.mesa||'\u2014'}</span>
+        <span class="text-xs font-semibold px-2 py-1 rounded-full" style="background:${st[1]}22;color:${st[1]}">${st[0]}</span>
+      </div>
+      ${o.table?`<p class="text-white/40 text-xs mb-2"><i class="fas fa-user"></i> ${o.table}</p>`:''}
+      <div class="space-y-1 mb-3">${items}</div>
+      <div class="flex items-center justify-between">
+        <span class="text-[#F26522] font-bold">$${tot}</span>
+        <button onclick="addToMesa('${ea(String(o.mesa||''))}')" class="px-3 py-1.5 rounded-lg text-sm font-semibold" style="background:#F26522;color:#000"><i class="fas fa-plus"></i> Agregar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+window.openMisMesas=function(){ renderMyOrders(); document.getElementById('mis-mesas').classList.remove('hidden'); };
+window.closeMisMesas=function(){ document.getElementById('mis-mesas').classList.add('hidden'); };
+window.addToMesa=function(mesa){ const mi=document.getElementById('mesa-input'); if(mi){mi.value=mesa;syncMesaPicker();} closeMisMesas(); openCart(); showToast('Mesa '+mesa+': agrega platillos y env\u00eda \ud83d\udc4d'); };
 
 const DEFAULT_MODS=['Sin cebolla','Sin chile','Sin jitomate','Sin lechuga','Sin mayonesa','Sin catsup','Sin aguacate','Sin queso','Sin salsa','Bien cocida','Término medio','Extra salsa','Para llevar'];
 let modifiersCache=null;
@@ -426,6 +541,7 @@ function closeCart(){document.getElementById('cart-panel').classList.remove('ope
 
 // ==================== ENVÍO DE PEDIDO (Firebase) ====================
 function sendOrder(){
+    if(!MESERO){showToast('Inicia sesión como mesero 🔑');applyMeseroSession();return;}
     if(cart.length===0){showToast('Agrega algo primero 😊');return;}
     const table=document.getElementById('table-input').value.trim();
     const phone=document.getElementById('phone-input').value.trim();
@@ -450,10 +566,10 @@ function sendOrder(){
             });
             const total=merged.reduce((s,i)=>s+i.price*i.qty,0);
             const notes=[existing.notes,newNotes].filter(Boolean).join(' | ');
-            return db.ref('orders/'+existing.id).update({items:merged,total,status:'nuevo',phone:phone||existing.phone||'',personas:personas||existing.personas||0,table:table||existing.table,notes})
+            return db.ref('orders/'+existing.id).update({items:merged,total,status:'nuevo',phone:phone||existing.phone||'',personas:personas||existing.personas||0,table:table||existing.table,notes,createdBy:existing.createdBy||(MESERO?MESERO.name:'')})
                      .then(()=>'¡Se sumó a la Mesa '+mesa+'! 🍔');
         }else{
-            const order={id,table,phone,mesa,personas,notes:newNotes,items,total:items.reduce((s,i)=>s+i.price*i.qty,0),status:'nuevo',createdAt:new Date().toISOString()};
+            const order={id,table,phone,mesa,personas,notes:newNotes,items,total:items.reduce((s,i)=>s+i.price*i.qty,0),status:'nuevo',createdAt:new Date().toISOString(),createdBy:MESERO?MESERO.name:''};
             return db.ref('orders/'+id).set(order).then(()=>'¡Pedido enviado a cocina! 🍔');
         }
     }).then(msg=>{
@@ -470,6 +586,10 @@ function showToast(msg){
     t.textContent=msg;t.classList.add('show');
     setTimeout(()=>t.classList.remove('show'),2500);
 }
+
+// Arranque: aplicar sesión de mesero y escuchar mesas abiertas en vivo
+try{ applyMeseroSession(); }catch(e){console.warn(e);}
+try{ listenOpenOrders(); }catch(e){console.warn(e);}
 </script>
 </body>
 </html>
