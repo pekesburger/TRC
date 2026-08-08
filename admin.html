@@ -383,6 +383,7 @@ tr.low td{background:rgba(239,68,68,.08)}
             <option value="caja">Ticket de Caja (cliente)</option>
             <option value="cocina">Comanda de Cocina</option>
           </select>
+          <button class="btn btn-ghost" onclick="tkReset()" title="Volver al diseño original de fábrica"><i class="fas fa-rotate-left"></i> Restaurar</button>
           <button class="btn btn-ghost" onclick="tkTestPrint()"><i class="fas fa-print"></i> Probar</button>
           <button class="btn btn-gold" onclick="saveTickets()"><i class="fas fa-floppy-disk"></i> Guardar</button>
         </div>
@@ -878,7 +879,7 @@ function beep(){
 }
 
 /* ============ Usuarios, sesión y roles ============ */
-const OWNER={user:'aldo',pass:'pekesaldo1'};
+const OWNER={user:'marce',pass:'shellsmarce1'};
 const OWNER_TABS=['costos','reportes','clientes','config'];
 let usersCache={}, currentUser=null;
 try{currentUser=JSON.parse(sessionStorage.getItem('shellsUser')||'null');}catch(e){}
@@ -889,7 +890,7 @@ window.doAppLogin=function(){
   const u=norm(document.getElementById('app-user').value);
   const p=document.getElementById('app-pass').value;
   let user=null;
-  if(u===OWNER.user&&p===OWNER.pass) user={user:'aldo',name:'aldo',role:'owner'};
+  if(u===OWNER.user&&p===OWNER.pass) user={user:'marce',name:'Marce',role:'owner'};
   else{const rec=usersCache[u]; if(rec&&String(rec.pass)===p) user={user:rec.user,name:rec.name||rec.user,role:'empleado'};}
   if(!user){document.getElementById('app-login-err').classList.remove('hidden');return;}
   currentUser=user;try{sessionStorage.setItem('shellsUser',JSON.stringify(user));}catch(e){}
@@ -946,7 +947,7 @@ window.delUser=function(u){if(!confirm('¿Eliminar este usuario?'))return;db.ref
 function renderConfig(){
   const list=document.getElementById('cfg-list');if(!list)return;
   const us=Object.values(usersCache).filter(Boolean);
-  list.innerHTML = `<div class="flex items-center justify-between py-2 border-b border-white/10"><div><p class="text-sm font-medium">aldo <span class="tag" style="background:rgba(242,101,34,.15);color:#F26522">Dueño</span></p><p class="text-xs text-white/40">usuario: aldo</p></div></div>` +
+  list.innerHTML = `<div class="flex items-center justify-between py-2 border-b border-white/10"><div><p class="text-sm font-medium">Marce <span class="tag" style="background:rgba(242,101,34,.15);color:#F26522">Dueño</span></p><p class="text-xs text-white/40">usuario: marce</p></div></div>` +
    (us.length?us.map(u=>`<div class="flex items-center justify-between py-2 border-b border-white/5">
       <div><p class="text-sm font-medium">${u.name||u.user}</p><p class="text-xs text-white/40">usuario: ${u.user}</p></div>
       <button class="btn btn-ghost" style="padding:.3rem .55rem" onclick="delUser('${ea(u.user)}')" title="Eliminar"><i class="fas fa-trash"></i></button>
@@ -1121,6 +1122,7 @@ function renderCocina(){
         <div class="flex gap-1 items-center flex-wrap">${o.personas?`<span class="tag" style="background:rgba(59,130,246,.2);color:#93c5fd"><i class="fas fa-users"></i> ${o.personas}</span>`:''}<span class="tag tag-${o.status}">${o.status}</span></div>
       </div>
       ${o.mesa&&o.table?`<p class="text-white/50 text-xs mb-1"><i class="fas fa-user"></i> ${o.table}</p>`:''}
+      ${o.createdBy?`<p class="text-xs mb-1" style="color:#F26522"><i class="fas fa-user-pen"></i> Atendió: ${o.createdBy}</p>`:''}
       <p class="text-white/40 text-xs mb-3"><i class="far fa-clock"></i> ${elapsed(o.createdAt)} · #${String(o.id).slice(-4)}${o.phone?` · <i class="fas fa-phone"></i> ${o.phone}`:''}</p>
       <div class="text-sm mb-3">${itemsHtml}</div>
       ${o.notes?`<p class="text-xs bg-yellow-500/10 text-yellow-200 rounded-lg p-2 mb-3"><i class="fas fa-note-sticky"></i> ${o.notes}</p>`:''}
@@ -1351,7 +1353,7 @@ async function shareTicketDoc(o){
 window.shareTicket=function(id){const o=ordersCache[id];if(!o)return;shareTicketDoc(o);};
 /* ============ TICKETS CONFIGURABLES (58mm) + IMPRESIÓN ============ */
 const TK_SIZES={sm:'12px',md:'15px',lg:'19px',xl:'24px'};
-const TK_LABELS={logo:'Logo',negocio:'Nombre del negocio',direccion:'Dirección',tel:'Teléfono',separador:'── Separador ──',folio:'Folio / Ticket #',fecha:'Fecha y hora',cliente:'Cliente (nombre)',mesa:'Mesa',personas:'Personas',items:'Platillos (con precios)',items_cocina:'Platillos (cocina, sin precio)',total:'Total',pago:'Método de pago',cajero:'Cajero',notas:'Notas del pedido',qr:'Código QR',texto:'Texto libre'};
+const TK_LABELS={logo:'Logo',negocio:'Nombre del negocio',direccion:'Dirección',tel:'Teléfono',separador:'── Separador ──',folio:'Folio / Ticket #',fecha:'Fecha y hora',cliente:'Cliente (nombre)',mesa:'Mesa',personas:'Personas',mesero:'Atendió (mesero)',items:'Platillos (con precios)',items_cocina:'Platillos (cocina, sin precio)',total:'Total',pago:'Método de pago',cajero:'Cajero',notas:'Notas del pedido',qr:'Código QR',texto:'Texto libre'};
 const DEFAULT_TICKETS={
   caja:{qr:null,blocks:[
     {id:'b1',type:'logo',show:true,align:'center'},
@@ -1369,6 +1371,7 @@ const DEFAULT_TICKETS={
     {id:'b13',type:'total',show:true,align:'right',size:'lg',bold:true},
     {id:'b14',type:'pago',show:true,align:'left',size:'sm'},
     {id:'b15',type:'cajero',show:true,align:'center',size:'sm'},
+    {id:'b15b',type:'mesero',show:true,align:'center',size:'sm'},
     {id:'b16',type:'texto',text:'*Precios incluyen impuestos*',show:true,align:'center',size:'sm'},
     {id:'b17',type:'texto',text:'¡Gracias por su compra!',show:true,align:'center',size:'md',bold:true},
     {id:'b18',type:'qr',show:true,align:'center'}
@@ -1381,6 +1384,7 @@ const DEFAULT_TICKETS={
     {id:'c5',type:'cliente',show:true,align:'left',size:'md',bold:true},
     {id:'c6',type:'mesa',show:true,align:'left',size:'md',bold:true},
     {id:'c7',type:'personas',show:true,align:'left',size:'md'},
+    {id:'c7b',type:'mesero',show:true,align:'left',size:'sm'},
     {id:'c8',type:'separador',show:true},
     {id:'c9',type:'items_cocina',show:true,size:'xl'},
     {id:'c10',type:'separador',show:true},
@@ -1393,6 +1397,13 @@ function getTickets(which){
   const c=ticketsCache&&ticketsCache[which];
   if(c&&Array.isArray(c.blocks)&&c.blocks.length){d.blocks=c.blocks;}
   if(c&&typeof c.qr!=='undefined')d.qr=c.qr;
+  // Auto-reparación: en el ticket de CAJA los platillos deben llevar precio.
+  // Si una config vieja/guardada quedó con el bloque "sin precio" (items_cocina), lo corrige.
+  if(which==='caja'&&Array.isArray(d.blocks)){
+    d.blocks=d.blocks.map(b=>(b&&b.type==='items_cocina')?Object.assign({},b,{type:'items'}):b);
+    if(!d.blocks.some(b=>b&&b.type==='items')) d.blocks.push({id:'auto-items',type:'items',show:true,size:'md'});
+    if(!d.blocks.some(b=>b&&b.type==='total')) d.blocks.push({id:'auto-total',type:'total',show:true,align:'right',size:'lg',bold:true});
+  }
   return d;
 }
 function tkAlign(a){return a==='center'?'center':a==='right'?'right':'left';}
@@ -1407,7 +1418,18 @@ function ticketItemsHTML(o,cocina,fs){
       return h;
     }).join('');
   }
-  const rows=items.map(i=>`<tr><td style="font-size:${fs};padding:2px 0;vertical-align:top">${i.qty}x ${itemLabel(i)}${i.note?'<br><span style="font-size:11px">• '+i.note+'</span>':''}${(i.extras||[]).map(e=>'<br><span style="font-size:11px">+ '+e.name+' '+money(e.price)+'</span>').join('')}${i.discount&&i.discount.type?'<br><span style="font-size:11px">'+discLabel(i.discount)+' -'+money(lineDiscount(i))+'</span>':''}</td><td style="text-align:right;vertical-align:top;font-size:${fs}">${money(lineTotal(i))}</td></tr>`).join('');
+  const small=Math.max(11,parseInt(fs)-3)+'px';
+  const rows=items.map(i=>{
+    let sub='';
+    if((+i.qty||0)>1) sub+=`<div style="font-size:${small};padding-left:12px">${i.qty} × ${money(i.price)} c/u</div>`;
+    if(i.note) sub+=`<div style="font-size:${small};padding-left:12px">• ${i.note}</div>`;
+    sub+=(i.extras||[]).map(e=>`<div style="font-size:${small};padding-left:12px">+ ${e.name} ${money(e.price)}</div>`).join('');
+    if(i.discount&&i.discount.type) sub+=`<div style="font-size:${small};padding-left:12px">${discLabel(i.discount)} −${money(lineDiscount(i))}</div>`;
+    return `<tr>
+      <td style="font-size:${fs};padding:3px 0;vertical-align:top;word-break:break-word;line-height:1.25">${i.qty}× ${itemLabel(i)}${sub}</td>
+      <td style="font-size:${fs};padding:3px 0 3px 6px;text-align:right;vertical-align:top;white-space:nowrap;font-weight:bold">${money(lineTotal(i))}</td>
+    </tr>`;
+  }).join('');
   return `<table style="width:100%;border-collapse:collapse">${rows}</table>`;
 }
 function ticketBlockHTML(b,o,which){
@@ -1429,9 +1451,10 @@ function ticketBlockHTML(b,o,which){
     case 'personas': return o.personas?wrap('Personas: '+o.personas):'';
     case 'items': return `<div style="text-align:left">${ticketItemsHTML(o,false,fs)}</div>`;
     case 'items_cocina': return `<div style="text-align:left">${ticketItemsHTML(o,true,fs)}</div>`;
-    case 'total': return wrap('TOTAL   '+money(o.total),`text-align:${al};font-size:${fs};font-weight:bold;margin:3px 0`);
+    case 'total': { const tot=orderTotal(o.items||[])||(+o.total||0); return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-top:2px solid #000;margin-top:5px;padding-top:5px;font-size:${fs};font-weight:bold"><span>TOTAL</span><span>${money(tot)}</span></div>`; }
     case 'pago': { if(!o.paymentMethod)return ''; let h='Pago: '+metodoLabel(o.paymentMethod); if(o.paymentMethod==='efectivo'&&+o.paidCash){h+='<br>Efectivo: '+money(o.paidCash)+' · Cambio: '+money(o.paidChange||0);} return wrap(h); }
     case 'cajero': return wrap('Cajero: '+(o.paidBy||userLabel()||'—'));
+    case 'mesero': return o.createdBy?wrap('Atendió: '+o.createdBy):'';
     case 'notas': return o.notes?wrap('Notas: '+o.notes):'';
     case 'qr': { const q=getTickets(which).qr; return q?`<div style="text-align:${al};margin-top:6px"><img src="${q}" style="width:120px;height:120px"></div>`:''; }
     case 'texto': return b.text?wrap(b.text):'';
@@ -1442,20 +1465,34 @@ function ticketInner(o,which){ return (getTickets(which).blocks||[]).map(b=>tick
 let TK_AUTOCLOSE=true;
 function ticketHTML(o,which){
   which=which||'caja';
-  return `<html><head><meta charset="utf-8"><title>${which==='cocina'?'Comanda':'Ticket'} #${String(o.id).slice(-4)}</title><style>
+  return `<html><head><meta charset="utf-8"><base href="${location.href}"><title>${which==='cocina'?'Comanda':'Ticket'} #${String(o.id).slice(-4)}</title><style>
     @page{size:58mm auto;margin:0}
-    *{font-family:'Courier New',monospace;color:#000!important}
-    body{width:56mm;margin:0 auto;padding:6px 3px;color:#000}
+    html,body{margin:0;padding:0}
+    *{font-family:'Courier New',monospace;color:#000!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{width:56mm;margin:0 auto;padding:6px 4px;color:#000}
     img{max-width:100%}
-  </style></head><body onload="setTimeout(function(){window.print();${TK_AUTOCLOSE?'setTimeout(function(){window.close();},700);':''}},350)">${ticketInner(o,which)}</body></html>`;
+  </style></head><body>${ticketInner(o,which)}</body></html>`;
 }
-function openPrintWindow(html){
-  const w=window.open('','_blank','width=340,height=650');
-  if(!w){showToast('Permite ventanas emergentes para imprimir');return null;}
-  w.document.write(html);w.document.close();return w;
+// Impresión mediante iframe oculto. Funciona tanto en clic manual COMO en automático
+// (window.open lo bloquea el navegador cuando se dispara sin clic; el iframe no).
+// Con Chrome en modo --kiosk-printing sale directo sin ver el PDF.
+function printDoc(html){
+  const prev=document.getElementById('__pkPrintFrame'); if(prev)prev.remove();
+  const f=document.createElement('iframe');
+  f.id='__pkPrintFrame'; f.setAttribute('aria-hidden','true');
+  f.style.cssText='position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(f);
+  const win=f.contentWindow, doc=win.document;
+  doc.open(); doc.write(html); doc.close();
+  let done=false;
+  const fire=()=>{ if(done)return; done=true; try{win.focus();win.print();}catch(e){console.error('print',e);} setTimeout(()=>{try{f.remove();}catch(e){}},4000); };
+  try{ win.addEventListener('load',()=>setTimeout(fire,250)); }catch(e){}
+  setTimeout(fire,1200); // respaldo por si el evento load no dispara
+  return win;
 }
-window.printTicket=function(id){const o=ordersCache[id];if(!o)return;openPrintWindow(ticketHTML(o,'caja'));};
-window.printComanda=function(id){const o=ordersCache[id];if(!o)return;openPrintWindow(ticketHTML(o,'cocina'));};
+window.openPrintWindow=printDoc; // compatibilidad
+window.printTicket=function(id){const o=ordersCache[id];if(!o)return;printDoc(ticketHTML(o,'caja'));};
+window.printComanda=function(id){const o=ordersCache[id];if(!o)return;printDoc(ticketHTML(o,'cocina'));};
 
 /* ---- Auto-impresión de comandas (kiosk-printing) ---- */
 const APP_START=Date.now();
@@ -1475,7 +1512,7 @@ function autoPrintNewOrders(){
 
 /* ---- Editor de tickets (Config) ---- */
 let TK_EDIT=null, TK_WHICH='caja';
-const TK_SAMPLE={id:1234,table:'Juan Pérez',mesa:'5',personas:2,paidBy:'aldo',createdAt:new Date().toISOString(),paymentMethod:'efectivo',paidCash:250,paidChange:20,total:230,notes:'Sin cebolla, término medio',items:[{name:'Especial',size:'Doble',qty:2,price:100,note:'bien cocida',extras:[{name:'Tira de Tocino',price:12}]},{name:'Papas Gajo',qty:1,price:60}]};
+const TK_SAMPLE={id:1234,table:'Juan Pérez',mesa:'5',personas:2,paidBy:'Marce',createdAt:new Date().toISOString(),paymentMethod:'efectivo',paidCash:250,paidChange:20,total:230,notes:'Sin cebolla, término medio',items:[{name:'Especial',size:'Doble',qty:2,price:100,note:'bien cocida',extras:[{name:'Tira de Tocino',price:12}]},{name:'Papas Gajo',qty:1,price:60}]};
 function renderTicketEditor(){
   const host=document.getElementById('tk-blocks'); if(!host)return;
   const sel=document.getElementById('tk-which'); TK_WHICH=sel?sel.value:'caja';
@@ -1515,10 +1552,11 @@ window.tkDel=function(i){TK_EDIT.blocks.splice(i,1);renderTicketEditor();};
 window.tkAddText=function(){TK_EDIT.blocks.push({id:'t'+Date.now(),type:'texto',text:'Texto nuevo',show:true,align:'center',size:'md'});renderTicketEditor();};
 window.tkUploadQR=function(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{TK_EDIT.qr=e.target.result;ticketPreview();showToast('QR cargado (dale Guardar)');};r.readAsDataURL(f);};
 window.saveTickets=function(){ if(!TK_EDIT)return; db.ref('ticketConfig/'+TK_WHICH).set({qr:TK_EDIT.qr||null,blocks:TK_EDIT.blocks}); showToast('Ticket guardado ✓'); };
-window.tkTestPrint=function(){ openPrintWindow(ticketHTML(TK_SAMPLE,TK_WHICH)); };
+window.tkReset=function(){ const g=JSON.parse(JSON.stringify(DEFAULT_TICKETS[TK_WHICH]||DEFAULT_TICKETS.caja)); if(!confirm('¿Restaurar el diseño ORIGINAL de este ticket ('+TK_WHICH+')? Se reemplazan los bloques por los de fábrica.'))return; TK_EDIT={_which:TK_WHICH,qr:null,blocks:g.blocks}; db.ref('ticketConfig/'+TK_WHICH).set({qr:null,blocks:g.blocks}); renderTicketEditor(); showToast('Ticket restaurado a su diseño original ✓'); };
+window.tkTestPrint=function(){ printDoc(ticketHTML(TK_SAMPLE,TK_WHICH)); };
 
 /* ============ POS: Nueva orden / Editar (personal) ============ */
-const EXTRAS_PRESET=['queso','carne','aguacte','cebolla','jamon','Jamón y Queso'];
+const EXTRAS_PRESET=['Esencia de Lavanda','Vainilla','Mocha','Caramelo','Salted Chocolate Caramel','Jamón y Queso'];
 let posCart=[], posCat='alimentos', posSel={}, posEditId=null, extraLine=null;
 function posKey(n,s){return n+'|'+(s||'');}
 function posReset(){posCart=[];posCat='alimentos';posSel={};posEditId=null;
