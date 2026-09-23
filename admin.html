@@ -8,8 +8,8 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <!-- jsPDF (genera el ticket en PDF) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<!-- QRCode (genera el QR de la red social) -->
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<!-- QRCode (genera el QR de la red social para el ticket) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -75,6 +75,12 @@ tr.low td{background:rgba(239,68,68,.08)}
 .pos-size.selected{background:#F26522;color:#000;box-shadow:0 4px 14px rgba(242,101,34,.45)}
 .hidden{display:none!important}
 @media print{body *{visibility:hidden}#printArea,#printArea *{visibility:visible}#printArea{position:absolute;left:0;top:0;width:100%;color:#000;background:#fff}}
+/* Estilos del ticket (se usan igual en pantalla y al imprimir) */
+.tk-sep{border-top:1px dashed #000;margin:4px 0}
+.tk-items{width:100%;border-collapse:collapse;table-layout:fixed}
+.tk-items .tk-n{padding:2px 0;vertical-align:top;line-height:1.25;word-break:break-word}
+.tk-items .tk-p{padding:2px 0 2px 4px;text-align:right;vertical-align:top;white-space:nowrap;font-weight:bold;width:57px}
+.tk-total{display:flex;justify-content:space-between;gap:6px;border-top:2px solid #000;margin-top:4px;padding-top:4px;font-weight:bold}
 .tk-mini{width:26px;height:26px;border-radius:6px;background:rgba(255,255,255,.08);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;transition:all .15s;border:none;cursor:pointer}
 .tk-mini:hover{background:rgba(255,255,255,.18)}
 .tk-mini.on{background:#F26522;color:#000}
@@ -93,8 +99,7 @@ tr.low td{background:rgba(239,68,68,.08)}
       <span class="text-white/40 text-xs hidden sm:block">Panel de administración</span>
     </div>
     <nav class="flex-1 flex items-center gap-1 overflow-x-auto" id="tabs">
-      <button class="tab-btn active" data-tab="cocina"><i class="fas fa-fire"></i> Cocina <span class="tab-badge hidden" id="badge-cocina">0</span></button>
-      <button class="tab-btn" data-tab="caja"><i class="fas fa-cash-register"></i> Caja <span class="tab-badge hidden" id="badge-caja">0</span></button>
+      <button class="tab-btn active" data-tab="caja"><i class="fas fa-cash-register"></i> Caja <span class="tab-badge hidden" id="badge-caja">0</span></button>
       <button class="tab-btn" data-tab="inventario"><i class="fas fa-boxes-stacked"></i> Inventario <span class="tab-badge hidden" id="badge-inv">0</span></button>
       <button class="tab-btn" data-tab="costos"><i class="fas fa-tags"></i> Costos <i class="fas fa-lock text-xs opacity-60"></i></button>
       <button class="tab-btn" data-tab="reportes"><i class="fas fa-chart-line"></i> Reportes <i class="fas fa-lock text-xs opacity-60"></i></button>
@@ -126,32 +131,20 @@ tr.low td{background:rgba(239,68,68,.08)}
 
 <main class="max-w-7xl mx-auto px-4 py-5">
 
-  <!-- ===================== COCINA ===================== -->
-  <section id="tab-cocina">
+  <!-- ===================== CAJA · PUNTO DE VENTA ===================== -->
+  <section id="tab-caja">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-      <h1 class="logo-font text-2xl font-bold">Pedidos en cocina</h1>
-      <div class="flex items-center gap-2">
-        <button class="btn btn-gold" onclick="openPOS()"><i class="fas fa-plus"></i> Orden</button>
-        <label class="text-xs text-white/50 flex items-center gap-2"><input type="checkbox" id="soundToggle" checked> <i class="fas fa-volume-high"></i> Sonido</label>
-        <label class="text-xs text-white/50 flex items-center gap-2" title="Actívalo SOLO en la compu conectada a la impresora térmica"><input type="checkbox" id="autoprint-toggle" onchange="toggleAutoPrint(this)"> <i class="fas fa-print"></i> Auto-imprimir comanda</label>
-        <button class="btn btn-ghost" onclick="renderAll()"><i class="fas fa-rotate"></i> Actualizar</button>
-      </div>
-    </div>
-    <div id="cocina-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-    <p id="cocina-empty" class="text-white/30 text-center py-16">No hay pedidos activos. Los nuevos pedidos aparecerán aquí automáticamente.</p>
-  </section>
-
-  <!-- ===================== CAJA ===================== -->
-  <section id="tab-caja" class="hidden">
-    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-      <h1 class="logo-font text-2xl font-bold">Caja</h1>
-      <div class="flex gap-2">
+      <h1 class="logo-font text-2xl font-bold">Caja <span class="text-white/30 text-base font-normal">· Punto de venta</span></h1>
+      <div class="flex gap-2 flex-wrap">
+        <button class="btn btn-ghost" onclick="toggleResumen()"><i class="fas fa-chart-simple"></i> <span id="resumen-lbl">Ver resumen del día</span></button>
         <button class="btn btn-ghost" onclick="openFondo()"><i class="fas fa-wallet"></i> Fondo</button>
-        <button class="btn btn-red" onclick="openGastoModal()"><i class="fas fa-money-bill-wave"></i> Registrar gasto</button>
-        <button class="btn btn-ghost" onclick="corteCaja()"><i class="fas fa-receipt"></i> Corte de caja (hoy)</button>
+        <button class="btn btn-red" onclick="openGastoModal()"><i class="fas fa-money-bill-wave"></i> Gasto</button>
+        <button class="btn btn-ghost" onclick="corteCaja()"><i class="fas fa-receipt"></i> Corte de caja</button>
       </div>
     </div>
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
+
+    <!-- Resumen del día (se muestra/oculta) -->
+    <div id="caja-stats" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Cobrado hoy</p><p class="stat-num gold" id="caja-hoy">$0</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Personas hoy</p><p class="stat-num text-blue-300" id="caja-personas">0</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Pedidos cobrados</p><p class="stat-num" id="caja-count">0</p></div>
@@ -161,9 +154,73 @@ tr.low td{background:rgba(239,68,68,.08)}
       <div class="card p-4 cursor-pointer hover:border-[#F26522]/40" onclick="openFondo()"><p class="text-white/40 text-xs uppercase tracking-wider">Fondo <i class="fas fa-pen text-[10px]"></i></p><p class="stat-num text-white/80" id="caja-fondo">$0</p></div>
       <div class="card p-4 border-2" style="border-color:rgba(34,197,94,.35)"><p class="text-white/40 text-xs uppercase tracking-wider">Efectivo en cajón</p><p class="stat-num text-green-400" id="caja-cajon">$0</p><p class="text-white/30 text-xs">fondo + efectivo</p></div>
     </div>
-    <h2 class="font-semibold mb-3 text-white/70">Pedidos por cobrar</h2>
-    <div id="caja-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-    <p id="caja-empty" class="text-white/30 text-center py-12">No hay pedidos pendientes de cobro.</p>
+
+    <!-- ===== Punto de venta: menú + ticket en curso ===== -->
+    <div class="grid lg:grid-cols-3 gap-4 items-start">
+
+      <!-- Menú -->
+      <div class="card flex flex-col min-h-0 min-w-0 lg:col-span-2" style="height:74vh;min-height:430px">
+        <div class="p-2 border-b border-white/10">
+          <input id="pos-search" class="inp" placeholder="🔍 Buscar platillo en todo el menú..." oninput="renderPOS()">
+        </div>
+        <div id="pos-cat-tabs" class="flex gap-1 p-2 overflow-x-auto border-b border-white/10"></div>
+        <div id="pos-items" class="flex-1 overflow-y-auto px-4 py-2"></div>
+      </div>
+
+      <!-- Ticket en curso -->
+      <div class="card flex flex-col min-h-0 min-w-0" style="height:74vh;min-height:430px">
+        <div class="flex items-center justify-between p-3 border-b border-white/10">
+          <h3 class="font-semibold text-sm" id="pos-title"><i class="fas fa-cart-shopping gold"></i> Venta nueva</h3>
+          <div class="flex gap-1">
+            <button class="btn btn-ghost hidden" style="padding:.3rem .55rem" id="pos-cancel-edit" onclick="posCancelEdit()" title="Cancelar edición"><i class="fas fa-rotate-left"></i></button>
+            <button class="btn btn-ghost" style="padding:.3rem .55rem" onclick="posClear()" title="Vaciar la venta"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+        <div class="p-3 border-b border-white/10 space-y-2">
+          <div class="grid grid-cols-2 gap-2">
+            <input id="pos-name" class="inp" placeholder="Cliente (opcional)">
+            <input id="pos-mesa" class="inp" placeholder="Mesa" inputmode="numeric">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <input id="pos-personas" class="inp" type="number" min="1" placeholder="👥 Personas">
+            <input id="pos-phone" class="inp" placeholder="Celular (opcional)" inputmode="numeric">
+          </div>
+        </div>
+        <div id="pos-ticket" class="flex-1 overflow-y-auto p-3 space-y-1" style="min-height:80px"></div>
+        <div class="p-3 border-t border-white/10">
+          <div class="flex justify-between items-baseline mb-3"><span class="text-white/60">Total</span><span id="pos-total" class="gold font-bold text-3xl">$0</span></div>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="btn btn-ghost" onclick="posSave()" title="Guardar para cobrar después"><i class="fas fa-floppy-disk"></i> Guardar</button>
+            <button class="btn btn-green" onclick="posCharge()" title="Cobrar e imprimir ticket"><i class="fas fa-cash-register"></i> Cobrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Pedidos guardados (pendientes de cobro) ===== -->
+    <div class="mt-6">
+      <h2 class="font-semibold mb-3 text-white/70"><i class="fas fa-clock gold"></i> Pedidos guardados (por cobrar) <span id="caja-pend-count" class="text-white/30 text-sm font-normal"></span></h2>
+      <div id="caja-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <p id="caja-empty" class="text-white/30 text-center py-10">No hay pedidos guardados. Los que guardes aparecerán aquí hasta que los cobres.</p>
+    </div>
+
+    <!-- ===== Ventas de hoy (tickets guardados del dueño) ===== -->
+    <div class="card p-4 mt-6">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 class="font-semibold text-white/70"><i class="fas fa-receipt gold"></i> Ventas de hoy <span class="text-white/30 text-sm font-normal">· copia del dueño guardada</span></h2>
+        <span class="text-white/40 text-sm" id="ventas-hoy-tot">$0</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="text-white/40 text-xs uppercase tracking-wider border-b border-white/10">
+            <th class="text-left p-2">Hora</th><th class="text-left p-2">Ticket</th><th class="text-left p-2">Cliente</th>
+            <th class="text-left p-2">Pago</th><th class="text-right p-2">Total</th><th class="text-center p-2">Acciones</th>
+          </tr></thead>
+          <tbody id="ventas-hoy-body"></tbody>
+        </table>
+        <p id="ventas-hoy-empty" class="text-white/30 text-center py-8">Aún no hay ventas cobradas hoy.</p>
+      </div>
+    </div>
   </section>
 
   <!-- ===================== INVENTARIO ===================== -->
@@ -248,7 +305,7 @@ tr.low td{background:rgba(239,68,68,.08)}
     <div class="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5">
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Ventas</p><p class="stat-num gold" id="rep-ventas">$0</p><p class="text-white/30 text-xs" id="rep-nventas">0 pedidos</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Ticket promedio</p><p class="stat-num text-yellow-200" id="rep-promedio">$0</p></div>
-      <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Personas</p><p class="stat-num text-blue-300" id="rep-personas">0</p><p class="text-white/30 text-xs">clientes</p></div>
+      <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Personas</p><p class="stat-num text-blue-300" id="rep-personas">0</p><p class="text-white/30 text-xs">atendidas</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Costo productos (COGS)</p><p class="stat-num text-orange-400" id="rep-cogs">$0</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Gastos</p><p class="stat-num text-red-400" id="rep-gastos">$0</p></div>
       <div class="card p-4 border-2" style="border-color:rgba(242,101,34,.4)"><p class="text-white/40 text-xs uppercase tracking-wider">Ganancia neta</p><p class="stat-num" id="rep-ganancia">$0</p><p class="text-white/30 text-xs" id="rep-margen">Margen 0%</p></div>
@@ -342,7 +399,7 @@ tr.low td{background:rgba(239,68,68,.08)}
   <!-- ===================== CONFIG ===================== -->
   <section id="tab-config" class="hidden">
     <h1 class="logo-font text-2xl font-bold mb-1">Configuración</h1>
-    <p class="text-white/40 text-sm mb-5">Usuarios del sistema. Los empleados solo ven Cocina, Caja e Inventario; no pueden editar/eliminar insumos ni ver Costos/Reportes/Config.</p>
+    <p class="text-white/40 text-sm mb-5">Usuarios del sistema. Los empleados solo ven Caja e Inventario; no pueden editar/eliminar insumos ni ver Costos/Reportes/Clientes/Config.</p>
     <div class="grid md:grid-cols-2 gap-5">
       <div class="card p-5">
         <h3 class="font-semibold mb-3"><i class="fas fa-user-plus gold"></i> Nuevo usuario</h3>
@@ -368,7 +425,7 @@ tr.low td{background:rgba(239,68,68,.08)}
           <button class="btn btn-gold" onclick="saveMenu()"><i class="fas fa-floppy-disk"></i> Guardar cambios</button>
         </div>
       </div>
-      <p class="text-white/40 text-sm mb-4">Los cambios se reflejan en el <b>POS de cocina</b> y en el <b>menú del cliente</b>. Acuérdate de dar <b>Guardar cambios</b>.</p>
+      <p class="text-white/40 text-sm mb-4">Los cambios se reflejan en el <b>punto de venta (Caja)</b> y en el <b>menú del cliente</b>. Acuérdate de dar <b>Guardar cambios</b>.</p>
       <div id="menu-cat-tabs" class="flex gap-1 flex-wrap mb-3"></div>
       <div class="flex justify-end mb-2"><button class="btn btn-ghost" onclick="openMenuItem(-1)"><i class="fas fa-plus"></i> Agregar platillo</button></div>
       <div id="menu-items"></div>
@@ -379,27 +436,34 @@ tr.low td{background:rgba(239,68,68,.08)}
       <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
         <h3 class="font-semibold"><i class="fas fa-receipt gold"></i> Tickets (editor en tiempo real)</h3>
         <div class="flex gap-2 flex-wrap">
-          <select class="inp w-auto" id="tk-which" onchange="renderTicketEditor()">
-            <option value="caja">Ticket de Caja (cliente)</option>
-            <option value="cocina">Comanda de Cocina</option>
-          </select>
           <button class="btn btn-ghost" onclick="tkReset()" title="Volver al diseño original de fábrica"><i class="fas fa-rotate-left"></i> Restaurar</button>
-          <button class="btn btn-ghost" onclick="tkTestPrint()"><i class="fas fa-print"></i> Probar</button>
+          <button class="btn btn-ghost" onclick="tkTestPrint()"><i class="fas fa-print"></i> Probar impresión</button>
           <button class="btn btn-gold" onclick="saveTickets()"><i class="fas fa-floppy-disk"></i> Guardar</button>
         </div>
       </div>
-      <p class="text-white/40 text-sm mb-4">Ordena los bloques (▲▼), alinea (izq/centro/der), cambia tamaño, negrita, muestra/oculta, edita el texto libre y sube un QR. Formato 58&nbsp;mm. Se guarda en Firebase y aplica en todas las compus.</p>
+      <p class="text-white/40 text-sm mb-4">Ticket del cliente en papel térmico de <b>58&nbsp;mm</b> (el mismo diseño se usa para la copia del dueño). Ordena los bloques (▲▼), alinea, cambia tamaño, negrita, muestra/oculta, edita el texto libre y sube tu logo o QR. Se guarda en Firebase y aplica en todas las compus.</p>
       <div class="grid md:grid-cols-2 gap-5">
         <div>
-          <div class="flex justify-between mb-2 gap-2 flex-wrap">
+          <div class="flex justify-between mb-3 gap-2 flex-wrap">
             <button class="btn btn-ghost" onclick="tkAddText()"><i class="fas fa-plus"></i> Agregar texto</button>
+            <label class="btn btn-ghost cursor-pointer"><i class="fas fa-image"></i> Subir logo<input type="file" accept="image/*" class="hidden" onchange="tkUploadLogo(event)"></label>
             <label class="btn btn-ghost cursor-pointer"><i class="fas fa-qrcode"></i> Subir QR<input type="file" accept="image/*" class="hidden" onchange="tkUploadQR(event)"></label>
+          </div>
+          <div class="rounded-lg p-3 mb-3" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)">
+            <label class="text-xs text-white/50">Ancho de impresión (mm) — área que imprime tu impresora térmica</label>
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+              <input class="inp" style="width:90px" id="tk-width" type="number" min="30" max="80" step="1" value="48" oninput="tkSetWidth(this.value)">
+              <button class="size-btn" onclick="tkSetWidth(48,true)">58 mm (48)</button>
+              <button class="size-btn" onclick="tkSetWidth(50,true)">58 mm ancho (50)</button>
+              <button class="size-btn" onclick="tkSetWidth(72,true)">80 mm (72)</button>
+            </div>
+            <p class="text-white/30 text-xs mt-2">Para rollo de 58 mm deja <b>48</b>. Solo cámbialo si el texto sale cortado o muy angosto.</p>
           </div>
           <div id="tk-blocks"></div>
         </div>
         <div>
-          <p class="text-xs text-white/40 mb-2 text-center">Vista previa (ejemplo)</p>
-          <div id="tk-preview" style="background:#fff;color:#000;width:230px;padding:12px 8px;border-radius:8px;margin:0 auto;font-family:'Courier New',monospace"></div>
+          <p class="text-xs text-white/40 mb-2 text-center">Vista previa a escala real (58 mm)</p>
+          <div id="tk-preview" style="background:#fff;color:#000;width:181px;padding:8px 0;border-radius:6px;margin:0 auto;font-family:'Courier New',monospace;line-height:1.35;box-shadow:0 6px 24px rgba(0,0,0,.5)"></div>
         </div>
       </div>
     </div>
@@ -495,10 +559,16 @@ tr.low td{background:rgba(239,68,68,.08)}
     </div>
     <div id="pay-cash-wrap" class="mt-3">
       <label class="text-xs text-white/50">Paga con</label>
-      <input class="inp mt-1" id="pay-cash" type="number" step="any" placeholder="0" oninput="calcChange()">
+      <input class="inp mt-1" id="pay-cash" type="number" step="any" placeholder="0" oninput="calcChange()" onkeydown="if(event.key==='Enter')confirmPay()">
+      <div id="pay-quick" class="flex flex-wrap gap-2 mt-2"></div>
       <p class="text-right mt-2 text-sm">Cambio: <span class="gold font-bold" id="pay-change">$0</span></p>
     </div>
-    <label class="flex items-center gap-2 mt-3 text-sm text-white/70"><input type="checkbox" id="pay-wa"> <i class="fab fa-whatsapp text-green-400"></i> Enviar ticket en PDF (WhatsApp)</label>
+    <div class="mt-3 space-y-1.5">
+      <label class="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" id="pay-print" checked onchange="savePayPrefs()"> <i class="fas fa-print"></i> Imprimir ticket del cliente</label>
+      <label class="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" id="pay-print-owner" onchange="savePayPrefs()"> <i class="fas fa-copy"></i> Imprimir también copia del dueño</label>
+      <label class="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" id="pay-wa"> <i class="fab fa-whatsapp text-green-400"></i> Enviar ticket en PDF (WhatsApp)</label>
+    </div>
+    <p class="text-white/30 text-xs mt-2"><i class="fas fa-circle-info"></i> La copia del dueño siempre queda guardada en el sistema.</p>
     <div class="flex gap-2 mt-5">
       <button class="btn btn-ghost flex-1" onclick="closeModal('payModal')">Cancelar</button>
       <button class="btn btn-green flex-1" onclick="confirmPay()"><i class="fas fa-check"></i> Cobrar</button>
@@ -537,45 +607,10 @@ tr.low td{background:rgba(239,68,68,.08)}
       <h3 class="logo-font text-lg font-bold"><i class="fas fa-receipt gold"></i> Ticket a detalle</h3>
       <button class="btn btn-ghost" style="padding:.3rem .6rem" onclick="closeModal('ticketModal')"><i class="fas fa-xmark"></i></button>
     </div>
-    <div id="ticket-detail" style="background:#fff;color:#000;width:250px;max-width:100%;margin:0 auto;padding:14px 10px;border-radius:8px;font-family:'Courier New',monospace;max-height:58vh;overflow:auto"></div>
+    <div id="ticket-detail" style="background:#fff;color:#000;width:181px;max-width:100%;margin:0 auto;padding:14px 10px;border-radius:8px;font-family:'Courier New',monospace;max-height:58vh;overflow:auto"></div>
     <div class="flex gap-2 mt-4">
       <button class="btn btn-ghost flex-1" onclick="printTicketFromModal()"><i class="fas fa-print"></i> Imprimir</button>
       <button class="btn btn-ghost flex-1" onclick="shareTicketFromModal()"><i class="fab fa-whatsapp text-green-400"></i> Enviar PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal POS (nueva orden para el personal) -->
-<div class="modal-bg" id="posModal">
-  <div class="card w-full max-w-4xl p-0 overflow-hidden flex flex-col" style="height:92vh">
-    <div class="flex items-center justify-between p-4 border-b border-white/10">
-      <h3 class="logo-font text-xl font-bold" id="pos-title"><i class="fas fa-plus-circle gold"></i> Nueva orden</h3>
-      <button onclick="closeModal('posModal')" class="text-white/60 hover:text-white text-3xl leading-none">×</button>
-    </div>
-    <div class="flex flex-col md:flex-row flex-1 min-h-0">
-      <div class="flex-1 flex flex-col min-w-0 md:border-r border-white/10 min-h-0">
-        <div class="p-2 border-b border-white/10"><input id="pos-search" class="inp" placeholder="🔍 Buscar platillo en todo el menú..." oninput="renderPOS()"></div>
-        <div id="pos-cat-tabs" class="flex gap-1 p-2 overflow-x-auto border-b border-white/10"></div>
-        <div id="pos-items" class="flex-1 overflow-y-auto px-4 py-2"></div>
-      </div>
-      <div class="w-full md:w-80 flex flex-col bg-black/30 border-t md:border-t-0 border-white/10 min-h-0">
-        <div class="p-3 border-b border-white/10 space-y-2">
-          <div class="grid grid-cols-2 gap-2">
-            <input id="pos-name" class="inp" placeholder="Nombre *" oninput="posValidate()">
-            <input id="pos-mesa" class="inp" placeholder="Mesa" inputmode="numeric">
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <input id="pos-personas" class="inp" type="number" min="1" placeholder="👥 Personas">
-            <input id="pos-phone" class="inp" placeholder="Celular (opcional)" inputmode="numeric">
-          </div>
-        </div>
-        <div id="pos-ticket" class="flex-1 overflow-y-auto p-3 space-y-1" style="min-height:80px"></div>
-        <div class="p-3 border-t border-white/10">
-          <div class="flex justify-between mb-3"><span class="text-white/60">Total</span><span id="pos-total" class="gold font-bold text-2xl">$0</span></div>
-          <button class="btn btn-gold w-full" id="pos-send-btn" onclick="posSend()"><i class="fas fa-paper-plane"></i> Enviar a cocina</button>
-          <button class="btn btn-ghost w-full mt-2" onclick="posClear()">Vaciar</button>
-        </div>
-      </div>
     </div>
   </div>
 </div>
@@ -849,6 +884,8 @@ function discLabel(d){
 const lineTotal=i=>Math.max(0,(+i.price||0)*(+i.qty||0)+extrasSum(i)-lineDiscount(i));
 const orderTotal=items=>(items||[]).reduce((s,i)=>s+lineTotal(i),0);
 const ea=s=>(s||'').toString().replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+// Escapa texto del usuario para que un nombre con < > & " nunca rompa la pantalla ni el ticket.
+const esc=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const slugify=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'-');
 const sizeName=s=>s.label.split('$')[0].trim();
 function shortSize(sn){const l=(sn||'').toLowerCase();
@@ -865,18 +902,8 @@ function dayStr(v){if(!v)return '';const s=String(v);if(/^\d{4}-\d{2}-\d{2}$/.te
 function fmtDateTime(v){const d=v?new Date(v):new Date();return new Intl.DateTimeFormat('es-MX',{timeZone:TZ,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(d);}
 function fmtTime(){return new Intl.DateTimeFormat('es-MX',{timeZone:TZ,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).format(new Date());}
 
-/* ============ Toast + sonido ============ */
+/* ============ Toast ============ */
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-let audioCtx;
-function beep(){
-  if(!document.getElementById('soundToggle').checked)return;
-  try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
-    [0,140].forEach((d,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);
-      o.frequency.value=i?1046:784;o.type='sine';const t=audioCtx.currentTime+d/1000;
-      g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(.25,t+.02);g.gain.exponentialRampToValueAtTime(.001,t+.25);
-      o.start(t);o.stop(t+.26);});
-  }catch(e){}
-}
 
 /* ============ Usuarios, sesión y roles ============ */
 const OWNER={user:'aldo',pass:'pekesaldo1'};
@@ -898,17 +925,17 @@ window.doAppLogin=function(){
   document.getElementById('app-user').value='';document.getElementById('app-pass').value='';
   applySession();
 };
-window.appLogout=function(){currentUser=null;try{sessionStorage.removeItem('shellsUser');}catch(e){}activeTab='cocina';applySession();};
+window.appLogout=function(){currentUser=null;try{sessionStorage.removeItem('shellsUser');}catch(e){}activeTab='caja';applySession();};
 function applySession(){
   const logged=!!currentUser;
   document.getElementById('loginScreen').classList.toggle('hidden',logged);
-  document.querySelectorAll('.tab-btn').forEach(b=>{
+  document.querySelectorAll('#tabs .tab-btn').forEach(b=>{
     const t=b.dataset.tab;
     b.classList.toggle('hidden', !(logged&&(isOwner()||!OWNER_TABS.includes(t))));
   });
   document.getElementById('user-chip').textContent = logged? (userLabel()+(isOwner()?' · Dueño':'')) : '';
   const lo=document.getElementById('logout-btn'); if(lo)lo.classList.toggle('hidden',!logged);
-  if(logged){ if(!isOwner()&&OWNER_TABS.includes(activeTab))activeTab='cocina'; switchTab(activeTab||'cocina'); }
+  if(logged){ if(!isOwner()&&OWNER_TABS.includes(activeTab))activeTab='caja'; switchTab(activeTab||'caja'); }
 }
 // Autorización que SIEMPRE pide la contraseña del dueño (editar/eliminar insumos).
 let authAction=null;
@@ -930,7 +957,7 @@ window.doLogin=function(){
     if(authAction){const a=authAction;authAction=null;a();}
   }else{document.getElementById('login-err').classList.remove('hidden');}
 };
-window.logoutOwner=function(){switchTab('cocina');};
+window.logoutOwner=function(){switchTab('caja');};
 
 /* ============ Config: alta de usuarios ============ */
 window.saveUser=function(){
@@ -1079,13 +1106,13 @@ window.restoreMenu=function(){
 };
 
 /* ============ Tabs ============ */
-let activeTab='cocina';
-document.querySelectorAll('.tab-btn').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+let activeTab='caja';
+document.querySelectorAll('#tabs .tab-btn').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 function switchTab(t){
   if(OWNER_TABS.includes(t)&&!isOwner()){showToast('Solo el dueño puede entrar aquí');return;}
   activeTab=t;
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['cocina','caja','inventario','costos','reportes','clientes','config'].forEach(s=>document.getElementById('tab-'+s).classList.toggle('hidden',s!==t));
+  document.querySelectorAll('#tabs .tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  ['caja','inventario','costos','reportes','clientes','config'].forEach(s=>document.getElementById('tab-'+s).classList.toggle('hidden',s!==t));
   renderAll();
 }
 
@@ -1105,107 +1132,195 @@ function elapsed(iso){
   return Math.floor(min/60)+'h '+(min%60)+'m';
 }
 
-/* ============ COCINA ============ */
-const ACTIVE=['nuevo','preparando','listo'];
-function renderCocina(){
-  const orders=getOrders().filter(o=>ACTIVE.includes(o.status)).sort((a,b)=>a.id-b.id);
-  const grid=document.getElementById('cocina-grid');
-  document.getElementById('cocina-empty').classList.toggle('hidden',orders.length>0);
-  grid.innerHTML=orders.map(o=>{
-    const itemsHtml=o.items.map(i=>`<div class="py-1 border-b border-white/5"><div class="flex justify-between"><span><span class="gold font-bold">${i.qty}×</span> ${i.name}${i.size?` <span class="text-white/40">(${i.size})</span>`:''}</span></div>${i.note?`<div class="text-yellow-200/90 text-xs pl-4"><i class="fas fa-angle-right"></i> ${i.note}</div>`:''}${(i.extras||[]).map(e=>`<div class="text-green-300/90 text-xs pl-4"><i class="fas fa-plus"></i> ${e.name}</div>`).join('')}${i.discount&&i.discount.type?`<div class="text-orange-300 text-xs pl-4"><i class="fas fa-percent"></i> ${discLabel(i.discount)}</div>`:''}</div>`).join('');
-    const next=o.status==='nuevo'?`<button class="btn btn-gold flex-1" onclick="setStatus(${o.id},'preparando')"><i class="fas fa-fire"></i> Preparar</button>`
-      :o.status==='preparando'?`<button class="btn btn-green flex-1" onclick="setStatus(${o.id},'listo')"><i class="fas fa-check"></i> Marcar listo</button>`
-      :`<span class="btn flex-1" style="background:rgba(34,197,94,.15);color:#86efac;cursor:default"><i class="fas fa-bell"></i> Listo · esperando caja</span>`;
-    return `<div class="card p-4 ${o.status==='nuevo'?'pulse':''}" style="${o.status==='nuevo'?'border-color:rgba(239,68,68,.5)':''}">
-      <div class="flex items-center justify-between mb-1 flex-wrap gap-1">
-        <span class="font-bold text-lg">${o.mesa?('Mesa '+o.mesa):(o.table||'Sin mesa')}</span>
-        <div class="flex gap-1 items-center flex-wrap">${o.personas?`<span class="tag" style="background:rgba(59,130,246,.2);color:#93c5fd"><i class="fas fa-users"></i> ${o.personas}</span>`:''}<span class="tag tag-${o.status}">${o.status}</span></div>
-      </div>
-      ${o.mesa&&o.table?`<p class="text-white/50 text-xs mb-1"><i class="fas fa-user"></i> ${o.table}</p>`:''}
-      ${o.createdBy?`<p class="text-xs mb-1" style="color:#F26522"><i class="fas fa-user-pen"></i> Atendió: ${o.createdBy}</p>`:''}
-      <p class="text-white/40 text-xs mb-3"><i class="far fa-clock"></i> ${elapsed(o.createdAt)} · #${String(o.id).slice(-4)}${o.phone?` · <i class="fas fa-phone"></i> ${o.phone}`:''}</p>
-      <div class="text-sm mb-3">${itemsHtml}</div>
-      ${o.notes?`<p class="text-xs bg-yellow-500/10 text-yellow-200 rounded-lg p-2 mb-3"><i class="fas fa-note-sticky"></i> ${o.notes}</p>`:''}
-      <p class="text-right gold font-bold mb-3">${money(o.total)}</p>
-      <div class="flex gap-2">${next}<button class="btn btn-ghost" onclick="openPOSedit(${o.id})" title="Editar / agregar a la orden"><i class="fas fa-pen"></i></button><button class="btn btn-ghost" onclick="setStatus(${o.id},'cancelado')" title="Cancelar"><i class="fas fa-xmark"></i></button></div>
-    </div>`;
-  }).join('');
-  const n=orders.length;updateBadge('badge-cocina',n);
-}
-window.setStatus=function(id,status){
-  if(status==='cancelado'&&!confirm('¿Cancelar este pedido?'))return;
-  db.ref('orders/'+id).update({status});
-  showToast(status==='cancelado'?'Pedido cancelado':'Pedido → '+status);
+/* ============ CAJA (punto de venta completo) ============ */
+// Un pedido "guardado" es el que ya se registró pero todavía no se cobra.
+const PENDING=['guardado','nuevo','preparando','listo'];
+function unpaid(){return getOrders().filter(o=>o&&PENDING.includes(o.status)).sort((a,b)=>a.id-b.id);}
+function paidToday(){return getOrders().filter(o=>o&&o.status==='cobrado'&&o.paidAt&&inRange(o.paidAt,'today')).sort((a,b)=>(b.paidAt||'')<(a.paidAt||'')?-1:1);}
+
+window.toggleResumen=function(){
+  const box=document.getElementById('caja-stats'); if(!box)return;
+  const show=box.classList.contains('hidden');
+  box.classList.toggle('hidden',!show);
+  document.getElementById('resumen-lbl').textContent=show?'Ocultar resumen':'Ver resumen del día';
+  try{localStorage.setItem('pk_resumen',show?'1':'0');}catch(e){}
 };
 
-/* ============ CAJA ============ */
-function unpaid(){return getOrders().filter(o=>['nuevo','preparando','listo'].includes(o.status)).sort((a,b)=>{
-  const r={listo:0,preparando:1,nuevo:2};return (r[a.status]-r[b.status])||a.id-b.id;});}
 function renderCaja(){
+  renderPOS();
+  // ---- pedidos guardados (por cobrar) ----
   const list=unpaid();
   document.getElementById('caja-empty').classList.toggle('hidden',list.length>0);
-  document.getElementById('caja-grid').innerHTML=list.map(o=>`
-    <div class="card p-4">
-      <div class="flex items-center justify-between mb-2">
-        <span class="font-bold">${o.table||'Sin mesa'}</span><span class="tag tag-${o.status}">${o.status}</span>
+  document.getElementById('caja-pend-count').textContent=list.length?('· '+list.length):'';
+  document.getElementById('caja-grid').innerHTML=list.map(o=>{
+    const arts=(o.items||[]).reduce((s,i)=>s+(+i.qty||0),0);
+    return `<div class="card p-4 ${posEditId===o.id?'':''}" style="${posEditId===o.id?'border-color:rgba(242,101,34,.6)':''}">
+      <div class="flex items-center justify-between mb-2 gap-2">
+        <span class="font-bold truncate">${o.mesa?('Mesa '+esc(o.mesa)+' · '):''}${esc(o.table||'Mostrador')}</span>
+        <span class="tag tag-listo">guardado</span>
       </div>
-      <p class="text-white/40 text-xs mb-2">#${String(o.id).slice(-4)} · ${o.items.reduce((s,i)=>s+i.qty,0)} art.${o.phone?` · <i class="fas fa-phone"></i> ${o.phone}`:''}</p>
-      <div class="text-xs text-white/60 mb-3">${o.items.map(i=>i.qty+'× '+itemLabel(i)+(i.note?' ('+i.note+')':'')+((i.extras||[]).length?' +'+i.extras.map(e=>e.name).join(', +'):'')+(i.discount&&i.discount.type?' ['+discLabel(i.discount)+']':'')).join(', ')}</div>
+      <p class="text-white/40 text-xs mb-2">#${String(o.id).slice(-4)} · ${arts} art. · ${elapsed(o.createdAt)}${o.createdBy?' · '+esc(o.createdBy):''}${o.phone?` · <i class="fas fa-phone"></i> ${esc(o.phone)}`:''}</p>
+      <div class="text-xs text-white/60 mb-3">${esc((o.items||[]).map(i=>i.qty+'× '+itemLabel(i)+(i.note?' ('+i.note+')':'')+((i.extras||[]).length?' +'+i.extras.map(e=>e.name).join(', +'):'')+(i.discount&&i.discount.type?' ['+discLabel(i.discount)+']':'')).join(', '))}</div>
       <div class="flex items-center justify-between mb-2">
-        <span class="gold font-bold text-xl">${money(o.total)}</span>
+        <span class="gold font-bold text-xl">${money(orderTotal(o.items))}</span>
         <button class="btn btn-green" onclick="openPay(${o.id})"><i class="fas fa-cash-register"></i> Cobrar</button>
       </div>
       <div class="flex gap-2">
-        <button class="btn btn-ghost flex-1" onclick="shareTicket(${o.id})"><i class="fab fa-whatsapp text-green-400"></i> Enviar PDF</button>
-        <button class="btn btn-ghost flex-1" onclick="printTicket(${o.id})"><i class="fas fa-print"></i> Imprimir</button>
+        <button class="btn btn-ghost flex-1" onclick="editOrder(${o.id})" title="Editar / agregar platillos"><i class="fas fa-pen"></i> Editar</button>
+        <button class="btn btn-ghost" onclick="printTicket(${o.id})" title="Imprimir"><i class="fas fa-print"></i></button>
+        <button class="btn btn-ghost" onclick="cancelOrder(${o.id})" title="Eliminar pedido"><i class="fas fa-xmark text-red-400"></i></button>
       </div>
-    </div>`).join('');
-  // stats hoy
-  const cobrados=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt&&inRange(o.paidAt,'today'));
-  const tot=cobrados.reduce((s,o)=>s+o.total,0);
-  const efe=cobrados.filter(o=>o.paymentMethod==='efectivo').reduce((s,o)=>s+o.total,0);
-  const personasHoy=new Set(getOrders().filter(o=>o.createdAt&&inRange(o.createdAt,'today')&&o.status!=='cancelado').map(o=>norm(o.table))).size;
-  const gastosHoy=getExp().filter(e=>inRange(e.fecha,'today')).reduce((s,e)=>s+(+e.monto),0);
-  document.getElementById('caja-hoy').textContent=money(tot);
-  document.getElementById('caja-count').textContent=cobrados.length;
-  document.getElementById('caja-efectivo').textContent=money(efe);
-  document.getElementById('caja-otros').textContent=money(tot-efe);
-  document.getElementById('caja-personas').textContent=personasHoy;
-  document.getElementById('caja-gastos').textContent=money(gastosHoy);
-  document.getElementById('caja-fondo').textContent=money(cashFloatCache);
-  document.getElementById('caja-cajon').textContent=money(cashFloatCache+efe);
-  updateBadge('badge-caja',list.filter(o=>o.status==='listo').length);
+    </div>`;}).join('');
+
+  // ---- ventas de hoy (copia del dueño) ----
+  const cobrados=paidToday();
+  const tot=cobrados.reduce((s,o)=>s+(+o.total||0),0);
+  const body=document.getElementById('ventas-hoy-body');
+  if(body){
+    document.getElementById('ventas-hoy-empty').classList.toggle('hidden',cobrados.length>0);
+    document.getElementById('ventas-hoy-tot').textContent=cobrados.length+(cobrados.length===1?' venta · ':' ventas · ')+money(tot);
+    body.innerHTML=cobrados.map(o=>`<tr class="border-b border-white/5 hover:bg-white/5">
+      <td class="p-2 text-white/50">${fmtDateTime(o.paidAt).split(', ')[1]||fmtDateTime(o.paidAt)}</td>
+      <td class="p-2 text-white/70">#${String(o.id).slice(-4)}</td>
+      <td class="p-2 font-medium">${esc(o.table||'Mostrador')}</td>
+      <td class="p-2 text-white/60">${esc(metodoLabel(o.paymentMethod))}</td>
+      <td class="p-2 text-right gold font-semibold">${money(o.total)}</td>
+      <td class="p-2 text-center"><div class="flex gap-1 justify-center">
+        <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="openTicketDetail(${o.id})" title="Ver ticket"><i class="fas fa-eye"></i></button>
+        <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="printTicket(${o.id})" title="Reimprimir ticket"><i class="fas fa-print"></i></button>
+        <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="printOwnerCopy(${o.id})" title="Imprimir copia del dueño"><i class="fas fa-copy"></i></button>
+        <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="shareTicket(${o.id})" title="Enviar PDF"><i class="fab fa-whatsapp text-green-400"></i></button>
+      </div></td></tr>`).join('');
+  }
+
+  // ---- resumen del día ----
+  const efe=cobrados.filter(o=>o.paymentMethod==='efectivo').reduce((s,o)=>s+(+o.total||0),0);
+  const personasHoy=cobrados.reduce((s,o)=>s+(+o.personas||1),0);
+  const gastosHoy=getExp().filter(e=>inRange(e.fecha,'today')).reduce((s,e)=>s+(+e.monto||0),0);
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('caja-hoy',money(tot));
+  set('caja-count',cobrados.length);
+  set('caja-efectivo',money(efe));
+  set('caja-otros',money(tot-efe));
+  set('caja-personas',personasHoy);
+  set('caja-gastos',money(gastosHoy));
+  set('caja-fondo',money(cashFloatCache));
+  set('caja-cajon',money(cashFloatCache+efe));
+  updateBadge('badge-caja',list.length);
 }
+
+/* ---- Eliminar / editar un pedido guardado ---- */
+window.cancelOrder=function(id){
+  if(!confirm('¿Eliminar este pedido guardado? No se cobrará.'))return;
+  db.ref('orders/'+id).update({status:'cancelado',canceledAt:new Date().toISOString(),canceledBy:userLabel()});
+  if(posEditId===id)posCancelEdit();
+  showToast('Pedido eliminado');
+};
+window.setStatus=function(id,status){db.ref('orders/'+id).update({status});};
+
+/* ============ COBRO ============ */
 window.openPay=function(id){
-  const o=getOrders().find(x=>x.id===id);if(!o)return;
+  const o=ordersCache[id]; if(!o){showToast('Ese pedido ya no existe');return;}
+  if(o.status==='cobrado'){showToast('Este pedido ya estaba cobrado');return;}
+  const total=orderTotal(o.items)||(+o.total||0);
   document.getElementById('pay-id').value=id;
-  document.getElementById('pay-sub').textContent=(o.table||'Sin mesa')+' · #'+String(o.id).slice(-4)+(o.phone?' · '+o.phone:'');
-  document.getElementById('pay-total').textContent=money(o.total);
+  document.getElementById('pay-sub').textContent=(o.mesa?('Mesa '+o.mesa+' · '):'')+(o.table||'Mostrador')+' · #'+String(o.id).slice(-4)+(o.phone?' · '+o.phone:'');
+  document.getElementById('pay-total').textContent=money(total);
   document.getElementById('pay-method').value='efectivo';
   document.getElementById('pay-cash').value='';
   document.getElementById('pay-change').textContent='$0';
-  document.getElementById('pay-wa').checked=!!waNumber(o.phone);
+  document.getElementById('pay-wa').checked=false;
+  loadPayPrefs();
+  renderPayQuick(total);
   onPayMethod();openModal('payModal');
+  setTimeout(()=>{const c=document.getElementById('pay-cash');if(c&&!c.closest('.hidden'))c.focus();},120);
 };
+// Botones rápidos de billetes (exacto, 100, 200, 500...)
+function renderPayQuick(total){
+  const host=document.getElementById('pay-quick'); if(!host)return;
+  const opts=[total];
+  [50,100,200,500,1000].forEach(b=>{if(b>total&&!opts.includes(b))opts.push(b);});
+  const up=Math.ceil(total/50)*50; if(up>total&&!opts.includes(up))opts.push(up);
+  host.innerHTML=opts.sort((a,b)=>a-b).slice(0,5).map(v=>
+    `<button class="size-btn" onclick="payQuick(${v})">${v===total?'Exacto':money(v)}</button>`).join('');
+}
+window.payQuick=function(v){const c=document.getElementById('pay-cash');c.value=v;calcChange();};
 window.onPayMethod=function(){document.getElementById('pay-cash-wrap').classList.toggle('hidden',document.getElementById('pay-method').value!=='efectivo');};
 window.calcChange=function(){
-  const o=getOrders().find(x=>x.id==document.getElementById('pay-id').value);
+  const o=ordersCache[+document.getElementById('pay-id').value];
+  const total=o?(orderTotal(o.items)||(+o.total||0)):0;
   const c=+document.getElementById('pay-cash').value||0;
-  document.getElementById('pay-change').textContent=money(Math.max(0,c-(o?o.total:0)));
+  document.getElementById('pay-change').textContent=money(Math.max(0,c-total));
 };
+window.savePayPrefs=function(){
+  try{
+    localStorage.setItem('pk_pay_print',document.getElementById('pay-print').checked?'1':'0');
+    localStorage.setItem('pk_pay_owner',document.getElementById('pay-print-owner').checked?'1':'0');
+  }catch(e){}
+};
+function loadPayPrefs(){
+  try{
+    const p=localStorage.getItem('pk_pay_print'); document.getElementById('pay-print').checked=(p===null||p==='1');
+    document.getElementById('pay-print-owner').checked=(localStorage.getItem('pk_pay_owner')==='1');
+  }catch(e){}
+}
+let PAYING=false;
 window.confirmPay=function(){
+  if(PAYING)return; // evita doble cobro por doble clic
   const id=+document.getElementById('pay-id').value;
+  const order=ordersCache[id];
+  if(!order){showToast('Ese pedido ya no existe');closeModal('payModal');return;}
+  if(order.status==='cobrado'){showToast('Este pedido ya estaba cobrado');closeModal('payModal');return;}
   const method=document.getElementById('pay-method').value;
-  const order=ordersCache[id];if(!order)return;
+  const total=orderTotal(order.items)||(+order.total||0);
   const cash=+document.getElementById('pay-cash').value||0;
-  const change=method==='efectivo'&&cash?Math.max(0,cash-order.total):0;
-  if(method==='efectivo'){
-    if(cash&&cash<order.total){if(!confirm('El efectivo es menor al total. ¿Cobrar de todos modos?'))return;}}
+  if(method==='efectivo'&&cash&&cash<total){
+    if(!confirm('El efectivo es menor al total. ¿Cobrar de todos modos?'))return;
+  }
+  const change=method==='efectivo'&&cash?Math.max(0,cash-total):0;
   const paidAt=new Date().toISOString();
-  db.ref('orders/'+id).update({status:'cobrado',paidAt,paymentMethod:method,paidBy:userLabel(),paidCash:method==='efectivo'?cash:0,paidChange:change});
-  order.paidCash=method==='efectivo'?cash:0; order.paidChange=change; // para el ticket inmediato
-  // Descuenta el inventario: usa la receta del platillo; si no tiene receta, coincide por nombre.
-  const deduct={}; // invId -> cantidad total a restar
+  const pay={status:'cobrado',paidAt,paymentMethod:method,paidBy:userLabel()||'—',
+             paidCash:method==='efectivo'?cash:0,paidChange:change,total};
+  const full={...order,...pay};
+  PAYING=true;
+  ordersCache[id]=full;                                   // disponible de inmediato para el ticket
+  db.ref('orders/'+id).update(pay)
+    .catch(e=>{console.error(e);showToast('⚠️ Se cobró sin conexión: se sincronizará al volver el internet');});
+  saveOwnerTicket(full);                                  // copia del dueño (queda guardada siempre)
+  deductInventory(full);                                  // descuenta insumos por receta
+  if(document.getElementById('pay-print').checked) printDoc(ticketHTML(full,'caja'));
+  if(document.getElementById('pay-print-owner').checked) setTimeout(()=>printDoc(ticketHTML(full,'caja',true)),1500);
+  if(document.getElementById('pay-wa').checked) shareTicketDoc(full);
+  if(posEditId===id) posReset();
+  closeModal('payModal');
+  showToast('¡Cobrado! '+money(total)+(change?' · Cambio '+money(change):''));
+  setTimeout(()=>{PAYING=false;},800);
+};
+
+/* ---- Copia del dueño: se guarda en Firebase (nodo "tickets") ---- */
+function saveOwnerTicket(o){
+  try{
+    const items=(o.items||[]).map(i=>({
+      name:i.name||'', size:i.size||'', qty:+i.qty||0, price:+i.price||0, note:i.note||'',
+      extras:(i.extras||[]).map(e=>({name:e.name||'',price:+e.price||0})),
+      descuento:i.discount&&i.discount.type?{label:i.discount.label||discLabel(i.discount),type:i.discount.type,value:+i.discount.value||0,monto:lineDiscount(i)}:null,
+      importe:lineTotal(i)
+    }));
+    const bruto=items.reduce((s,i)=>s+i.price*i.qty+ (i.extras||[]).reduce((a,e)=>a+e.price,0),0);
+    const desc=items.reduce((s,i)=>s+(i.descuento?i.descuento.monto:0),0);
+    const t={
+      id:o.id, folio:String(o.id).slice(-4), ts:o.paidAt||new Date().toISOString(), fecha:dayStr(o.paidAt)||todayStr(),
+      cliente:o.table||'Público en general', mesa:o.mesa||'', personas:+o.personas||0, telefono:o.phone||'',
+      items, subtotal:Math.round(bruto*100)/100, descuentos:Math.round(desc*100)/100, total:+o.total||orderTotal(o.items),
+      metodo:o.paymentMethod||'', efectivo:+o.paidCash||0, cambio:+o.paidChange||0,
+      cajero:o.paidBy||userLabel()||'—', capturo:o.createdBy||'', negocio:BIZ.name, texto:ticketPlainText(o)
+    };
+    db.ref('tickets/'+o.id).set(t).catch(e=>console.error('ticket dueño',e));
+  }catch(e){console.error('saveOwnerTicket',e);}
+}
+/* ---- Descuento de inventario por receta (o por nombre si no hay receta) ---- */
+function deductInventory(order){
+  const deduct={};
   (order.items||[]).forEach(it=>{
     const recipe=recipesCache[norm(it.name)];
     if(recipe&&Array.isArray(recipe.items)&&recipe.items.length){
@@ -1217,15 +1332,9 @@ window.confirmPay=function(){
   });
   Object.keys(deduct).forEach(invId=>{
     const inv=invCache[invId];
-    if(inv){const ns=Math.max(0,(+inv.stock||0)-deduct[invId]);db.ref('inventory/'+invId+'/stock').set(ns);}
+    if(inv){const ns=Math.max(0,Math.round(((+inv.stock||0)-deduct[invId])*1000)/1000);db.ref('inventory/'+invId+'/stock').set(ns);}
   });
-  // Enviar ticket en PDF (compartir por WhatsApp en celular / descargar en escritorio).
-  if(document.getElementById('pay-wa').checked){
-    shareTicketDoc({...order,paymentMethod:method,paidAt:new Date().toISOString()});
-  }
-  printTicket(id); // imprime el ticket del cliente al cobrar (silencioso con kiosk-printing)
-  closeModal('payModal');showToast('¡Cobrado! '+money(order.total));
-};
+}
 function corteCaja(){
   const c=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt&&inRange(o.paidAt,'today'));
   const tot=c.reduce((s,o)=>s+o.total,0);
@@ -1294,44 +1403,86 @@ const TK={logo:null, qr:null, qrImg:null};
 function imgToData(src){return new Promise(res=>{const img=new Image();img.crossOrigin='anonymous';img.onload=()=>{try{const c=document.createElement('canvas');c.width=img.naturalWidth||300;c.height=img.naturalHeight||150;c.getContext('2d').drawImage(img,0,0);res({url:c.toDataURL('image/png'),w:c.width,h:c.height});}catch(e){res(null);}};img.onerror=()=>res(null);img.src=src;});}
 imgToData('log.png').then(d=>{TK.logo=d;});
 imgToData('qrred.png').then(d=>{TK.qrImg=d;});
-try{if(window.QRCode&&QRCode.toDataURL)QRCode.toDataURL(BIZ.social,{margin:1,width:220}).then(u=>{TK.qr=u;}).catch(()=>{});}catch(e){}
+// Genera el QR de la red social (si no hay uno subido desde Config).
+function genQR(text){
+  return new Promise(res=>{
+    try{
+      if(!window.QRCode||typeof window.QRCode!=='function'){res(null);return;}
+      const box=document.createElement('div');
+      box.style.cssText='position:fixed;left:-9999px;top:0';
+      document.body.appendChild(box);
+      new window.QRCode(box,{text,width:220,height:220});
+      setTimeout(()=>{
+        let url=null;
+        try{
+          const c=box.querySelector('canvas'), im=box.querySelector('img');
+          url=c?c.toDataURL('image/png'):(im?im.src:null);
+        }catch(e){}
+        box.remove(); res(url);
+      },250);
+    }catch(e){res(null);}
+  });
+}
+window.addEventListener('load',()=>{genQR(BIZ.social).then(u=>{if(u)TK.qr=u;});});
 function metodoLabel(m){return m?m.charAt(0).toUpperCase()+m.slice(1):'';}
 
+/* PDF del ticket en 58 mm (mismo formato que la impresión térmica).
+   Se dibuja dos veces: la primera para medir el alto exacto y que el PDF salga
+   completo, sin hojas cortadas ni espacio sobrante. */
 function buildTicketDoc(o){
   const { jsPDF }=window.jspdf;
-  const doc=new jsPDF({unit:'mm',format:[80,240]});  // rollo de 80 mm
-  const cx=40, L=4, R=76; let y=8;
-  if(TK.logo){try{const w=34,h=Math.min(28,w*(TK.logo.h/TK.logo.w||0.5));doc.addImage(TK.logo.url,'PNG',cx-w/2,y,w,h);y+=h+2;}catch(e){}}
-  doc.setFont('courier','bold');doc.setFontSize(13);
-  doc.text(BIZ.name,cx,y,{align:'center'});y+=5;
-  doc.setFont('courier','normal');doc.setFontSize(8);
-  BIZ.addr.forEach(l=>{doc.text(l,cx,y,{align:'center'});y+=3.4;});
-  if(BIZ.tel){doc.text('Tel: '+BIZ.tel,cx,y,{align:'center'});y+=4.5;}
-  doc.setFontSize(9);
-  doc.text('Ticket #'+String(o.id).slice(-4),L,y);doc.text(fmtDateTime(o.paidAt||o.createdAt),R,y,{align:'right'});y+=4;
-  doc.text('Cliente: '+(o.table||'Público en general'),L,y);y+=4;
-  doc.text('--------------------------------',cx,y,{align:'center'});y+=4;
-  (o.items||[]).forEach(i=>{
-    const extraTxt=(i.extras||[]).map(e=>' + '+e.name+' ('+money(e.price)+')').join('');
-    const dscTxt=i.discount&&i.discount.type?`  ${discLabel(i.discount)} -${money(lineDiscount(i))}`:'';
-    const lines=doc.splitTextToSize(`${i.qty}x ${itemLabel(i)}`+(i.note?` — ${i.note}`:'')+extraTxt+dscTxt,52);
-    doc.text(lines,L,y);
-    doc.text(money(lineTotal(i)),R,y,{align:'right'});
-    y+=4*lines.length;
-  });
-  doc.text('--------------------------------',cx,y,{align:'center'});y+=5;
-  doc.setFont('courier','bold');doc.setFontSize(12);
-  doc.text('TOTAL',L,y);doc.text(money(o.total),R,y,{align:'right'});y+=6;
-  doc.setFont('courier','normal');doc.setFontSize(9);
-  if(o.paymentMethod){doc.text('Pago: '+metodoLabel(o.paymentMethod),L,y);y+=4;}
-  if(o.paymentMethod==='efectivo'&&(+o.paidCash)){doc.text('Efectivo',L,y);doc.text(money(o.paidCash),R,y,{align:'right'});y+=4;doc.text('Cambio',L,y);doc.text(money(o.paidChange||0),R,y,{align:'right'});y+=4;}
-  y+=2;doc.setFontSize(8);
-  doc.text('*Precios incluyen impuestos*',cx,y,{align:'center'});y+=4;
-  doc.text('Cajero: '+(o.paidBy||userLabel()||'—'),cx,y,{align:'center'});y+=5;
-  doc.setFontSize(10);doc.setFont('courier','bold');
-  doc.text('¡Gracias por su compra!',cx,y,{align:'center'});y+=5;
-  const qr=TK.qr||(TK.qrImg&&TK.qrImg.url);
-  if(qr){try{doc.addImage(qr,'PNG',cx-13,y,26,26);y+=28;doc.setFont('courier','normal');doc.setFontSize(7);doc.text('Síguenos en redes',cx,y,{align:'center'});}catch(e){}}
+  const W=58;                                   // ancho del rollo
+  const draw=doc=>{
+    const cx=W/2, L=3, R=W-3, IW=W-6;           // márgenes de 3 mm
+    let y=7;
+    const line=()=>{doc.text('------------------------------',cx,y,{align:'center'});y+=3.6;};
+    const row=(a,b,size,bold)=>{doc.setFont('courier',bold?'bold':'normal');doc.setFontSize(size||8);
+      doc.text(String(a),L,y);doc.text(String(b),R,y,{align:'right'});y+=(size||8)*0.45+1.4;};
+    const logo=tkLogoData();
+    if(logo){try{const w=28,h=Math.min(22,w*(logo.h/logo.w||0.5));if(doc)doc.addImage(logo.url,'PNG',cx-w/2,y,w,h);y+=h+2;}catch(e){}}
+    doc.setFont('courier','bold');doc.setFontSize(11);
+    doc.text(BIZ.name,cx,y,{align:'center'});y+=4.5;
+    doc.setFont('courier','normal');doc.setFontSize(7);
+    BIZ.addr.forEach(l=>{doc.splitTextToSize(l,IW).forEach(t=>{doc.text(t,cx,y,{align:'center'});y+=3;});});
+    if(BIZ.tel){doc.text('Tel: '+BIZ.tel,cx,y,{align:'center'});y+=4;}
+    doc.setFontSize(8);
+    doc.text('Ticket #'+String(o.id).slice(-4),L,y);y+=3.6;
+    doc.text(fmtDateTime(o.paidAt||o.createdAt),L,y);y+=3.6;
+    doc.text('Cliente: '+(o.table||'Público en general'),L,y);y+=3.6;
+    if(o.mesa){doc.text('Mesa: '+o.mesa,L,y);y+=3.6;}
+    line();
+    (o.items||[]).forEach(i=>{
+      const nameLines=doc.splitTextToSize(`${i.qty}x ${itemLabel(i)}`,IW-14);
+      doc.setFont('courier','normal');doc.setFontSize(8);
+      doc.text(nameLines,L,y);
+      doc.text(money(lineTotal(i)),R,y,{align:'right'});
+      y+=3.6*nameLines.length;
+      doc.setFontSize(7);
+      if((+i.qty||0)>1){doc.text('   '+i.qty+' x '+money(i.price),L,y);y+=3;}
+      if(i.note)doc.splitTextToSize('   • '+i.note,IW).forEach(t=>{doc.text(t,L,y);y+=3;});
+      (i.extras||[]).forEach(e=>{doc.splitTextToSize('   + '+e.name+' '+money(e.price),IW).forEach(t=>{doc.text(t,L,y);y+=3;});});
+      if(i.discount&&i.discount.type){doc.text('   '+discLabel(i.discount)+' -'+money(lineDiscount(i)),L,y);y+=3;}
+      doc.setFontSize(8);
+    });
+    line();
+    const tot=orderTotal(o.items||[])||(+o.total||0);
+    row('TOTAL',money(tot),11,true);
+    doc.setFont('courier','normal');doc.setFontSize(8);
+    if(o.paymentMethod){doc.text('Pago: '+metodoLabel(o.paymentMethod),L,y);y+=3.6;}
+    if(o.paymentMethod==='efectivo'&&(+o.paidCash)){row('Efectivo',money(o.paidCash),8);row('Cambio',money(o.paidChange||0),8);}
+    y+=2;doc.setFontSize(7);
+    doc.text('*Precios incluyen impuestos*',cx,y,{align:'center'});y+=3.2;
+    doc.text('Cajero: '+(o.paidBy||userLabel()||'—'),cx,y,{align:'center'});y+=4.5;
+    doc.setFontSize(9);doc.setFont('courier','bold');
+    doc.text('¡Gracias por su compra!',cx,y,{align:'center'});y+=5;
+    const qr=tkQrData();
+    if(qr){try{doc.addImage(qr,'PNG',cx-11,y,22,22);y+=24;doc.setFont('courier','normal');doc.setFontSize(6.5);doc.text('Síguenos en redes',cx,y,{align:'center'});y+=3;}catch(e){}}
+    return y+8;                                  // margen inferior para el corte
+  };
+  const probe=new jsPDF({unit:'mm',format:[W,600]});
+  const h=Math.max(60,Math.min(600,draw(probe)));
+  const doc=new jsPDF({unit:'mm',format:[W,h]});
+  draw(doc);
   return doc;
 }
 async function shareTicketDoc(o){
@@ -1351,11 +1502,18 @@ async function shareTicketDoc(o){
   }
 }
 window.shareTicket=function(id){const o=ordersCache[id];if(!o)return;shareTicketDoc(o);};
-/* ============ TICKETS CONFIGURABLES (58mm) + IMPRESIÓN ============ */
-const TK_SIZES={sm:'12px',md:'15px',lg:'19px',xl:'24px'};
-const TK_LABELS={logo:'Logo',negocio:'Nombre del negocio',direccion:'Dirección',tel:'Teléfono',separador:'── Separador ──',folio:'Folio / Ticket #',fecha:'Fecha y hora',cliente:'Cliente (nombre)',mesa:'Mesa',personas:'Personas',mesero:'Atendió (mesero)',items:'Platillos (con precios)',items_cocina:'Platillos (cocina, sin precio)',total:'Total',pago:'Método de pago',cajero:'Cajero',notas:'Notas del pedido',qr:'Código QR',texto:'Texto libre'};
+
+/* ============================================================
+   TICKET TÉRMICO DE 58 mm (configurable) + IMPRESIÓN
+   Área de impresión por omisión: 48 mm (≈ 181 px). Los tamaños
+   están calculados para que NADA se corte a lo ancho:
+   sm ≈ 30 caracteres por línea · md ≈ 25 · lg ≈ 20 · xl ≈ 16
+   ============================================================ */
+const TK_SIZES={sm:'10px',md:'12px',lg:'15px',xl:'18px'};
+const TK_LABELS={logo:'Logo',negocio:'Nombre del negocio',direccion:'Dirección',tel:'Teléfono',separador:'── Separador ──',folio:'Folio / Ticket #',fecha:'Fecha y hora',cliente:'Cliente (nombre)',mesa:'Mesa',personas:'Personas',mesero:'Capturó (quien tomó la orden)',items:'Platillos (con precios)',subtotal:'Subtotal y descuentos',total:'TOTAL',pago:'Método de pago / cambio',cajero:'Cajero',notas:'Notas del pedido',qr:'Código QR',texto:'Texto libre'};
+const TK_DEFAULT_WIDTH=48;   // mm que imprime realmente un rollo de 58 mm
 const DEFAULT_TICKETS={
-  caja:{qr:null,blocks:[
+  caja:{qr:null,logo:null,width:TK_DEFAULT_WIDTH,blocks:[
     {id:'b1',type:'logo',show:true,align:'center'},
     {id:'b2',type:'negocio',show:true,align:'center',size:'lg',bold:true},
     {id:'b3',type:'direccion',show:true,align:'center',size:'sm'},
@@ -1365,117 +1523,158 @@ const DEFAULT_TICKETS={
     {id:'b7',type:'fecha',show:true,align:'left',size:'sm'},
     {id:'b8',type:'cliente',show:true,align:'left',size:'sm'},
     {id:'b9',type:'mesa',show:true,align:'left',size:'sm'},
+    {id:'b9b',type:'personas',show:true,align:'left',size:'sm'},
     {id:'b10',type:'separador',show:true},
     {id:'b11',type:'items',show:true,size:'md'},
-    {id:'b12',type:'separador',show:true},
+    {id:'b12',type:'subtotal',show:true,size:'sm'},
     {id:'b13',type:'total',show:true,align:'right',size:'lg',bold:true},
     {id:'b14',type:'pago',show:true,align:'left',size:'sm'},
+    {id:'b14b',type:'notas',show:true,align:'left',size:'sm'},
     {id:'b15',type:'cajero',show:true,align:'center',size:'sm'},
     {id:'b15b',type:'mesero',show:true,align:'center',size:'sm'},
     {id:'b16',type:'texto',text:'*Precios incluyen impuestos*',show:true,align:'center',size:'sm'},
     {id:'b17',type:'texto',text:'¡Gracias por su compra!',show:true,align:'center',size:'md',bold:true},
     {id:'b18',type:'qr',show:true,align:'center'}
-  ]},
-  cocina:{qr:null,blocks:[
-    {id:'c1',type:'texto',text:'COMANDA · COCINA',show:true,align:'center',size:'xl',bold:true},
-    {id:'c2',type:'folio',show:true,align:'center',size:'md'},
-    {id:'c3',type:'fecha',show:true,align:'center',size:'sm'},
-    {id:'c4',type:'separador',show:true},
-    {id:'c5',type:'cliente',show:true,align:'left',size:'md',bold:true},
-    {id:'c6',type:'mesa',show:true,align:'left',size:'md',bold:true},
-    {id:'c7',type:'personas',show:true,align:'left',size:'md'},
-    {id:'c7b',type:'mesero',show:true,align:'left',size:'sm'},
-    {id:'c8',type:'separador',show:true},
-    {id:'c9',type:'items_cocina',show:true,size:'xl'},
-    {id:'c10',type:'separador',show:true},
-    {id:'c11',type:'notas',show:true,align:'left',size:'md'}
   ]}
 };
 let ticketsCache={};
 function getTickets(which){
-  const d=JSON.parse(JSON.stringify(DEFAULT_TICKETS[which]||DEFAULT_TICKETS.caja));
-  const c=ticketsCache&&ticketsCache[which];
-  if(c&&Array.isArray(c.blocks)&&c.blocks.length){d.blocks=c.blocks;}
+  const d=JSON.parse(JSON.stringify(DEFAULT_TICKETS.caja));
+  const c=ticketsCache&&ticketsCache[which||'caja'];
+  if(c&&Array.isArray(c.blocks)&&c.blocks.length)d.blocks=c.blocks;
   if(c&&typeof c.qr!=='undefined')d.qr=c.qr;
-  // Auto-reparación: en el ticket de CAJA los platillos deben llevar precio.
-  // Si una config vieja/guardada quedó con el bloque "sin precio" (items_cocina), lo corrige.
-  if(which==='caja'&&Array.isArray(d.blocks)){
-    d.blocks=d.blocks.map(b=>(b&&b.type==='items_cocina')?Object.assign({},b,{type:'items'}):b);
-    if(!d.blocks.some(b=>b&&b.type==='items')) d.blocks.push({id:'auto-items',type:'items',show:true,size:'md'});
-    if(!d.blocks.some(b=>b&&b.type==='total')) d.blocks.push({id:'auto-total',type:'total',show:true,align:'right',size:'lg',bold:true});
-  }
+  if(c&&typeof c.logo!=='undefined')d.logo=c.logo;
+  if(c&&+c.width)d.width=+c.width;
+  // Auto-reparación de configuraciones viejas (comanda de cocina, bloques faltantes).
+  d.blocks=d.blocks.filter(Boolean).map(b=>b.type==='items_cocina'?Object.assign({},b,{type:'items'}):b);
+  if(!d.blocks.some(b=>b.type==='items'))d.blocks.push({id:'auto-items',type:'items',show:true,size:'md'});
+  if(!d.blocks.some(b=>b.type==='total'))d.blocks.push({id:'auto-total',type:'total',show:true,align:'right',size:'lg',bold:true});
   return d;
 }
-function tkAlign(a){return a==='center'?'center':a==='right'?'right':'left';}
-function ticketItemsHTML(o,cocina,fs){
+function tkWidthMM(){const w=+getTickets('caja').width||TK_DEFAULT_WIDTH;return Math.min(80,Math.max(30,w));}
+function tkPaperMM(){return tkWidthMM()<=52?58:80;}
+function tkLogoData(){return TK.logoCfg||TK.logo||null;}          // {url,w,h} para el PDF
+function tkLogoSrc(){const g=getTickets('caja');return g.logo||'log.png';}
+function tkQrData(){const g=getTickets('caja');return g.qr||TK.qr||(TK.qrImg&&TK.qrImg.url)||null;}
+
+function ticketItemsHTML(o,fs){
   const items=o.items||[];
-  if(cocina){
-    const small=Math.max(12,parseInt(fs)-8)+'px';
-    return items.map(i=>{
-      let h=`<div style="font-size:${fs};font-weight:bold;margin:4px 0">${i.qty}x ${itemLabel(i)}</div>`;
-      if(i.note)h+=`<div style="font-size:${small};padding-left:10px;margin-bottom:2px">• ${i.note}</div>`;
-      (i.extras||[]).forEach(e=>{h+=`<div style="font-size:${small};padding-left:10px">+ ${e.name}</div>`;});
-      return h;
-    }).join('');
-  }
-  const small=Math.max(11,parseInt(fs)-3)+'px';
+  const small=Math.max(9,parseInt(fs)-2)+'px';
   const rows=items.map(i=>{
     let sub='';
-    if((+i.qty||0)>1) sub+=`<div style="font-size:${small};padding-left:12px">${i.qty} × ${money(i.price)} c/u</div>`;
-    if(i.note) sub+=`<div style="font-size:${small};padding-left:12px">• ${i.note}</div>`;
-    sub+=(i.extras||[]).map(e=>`<div style="font-size:${small};padding-left:12px">+ ${e.name} ${money(e.price)}</div>`).join('');
-    if(i.discount&&i.discount.type) sub+=`<div style="font-size:${small};padding-left:12px">${discLabel(i.discount)} −${money(lineDiscount(i))}</div>`;
+    if((+i.qty||0)>1) sub+=`<div style="font-size:${small};padding-left:8px">${i.qty} × ${money(i.price)}</div>`;
+    if(i.note) sub+=`<div style="font-size:${small};padding-left:8px">• ${esc(i.note)}</div>`;
+    sub+=(i.extras||[]).map(e=>`<div style="font-size:${small};padding-left:8px">+ ${esc(e.name)} ${money(e.price)}</div>`).join('');
+    if(i.discount&&i.discount.type) sub+=`<div style="font-size:${small};padding-left:8px">${esc(discLabel(i.discount))} −${money(lineDiscount(i))}</div>`;
     return `<tr>
-      <td style="font-size:${fs};padding:3px 0;vertical-align:top;word-break:break-word;line-height:1.25">${i.qty}× ${itemLabel(i)}${sub}</td>
-      <td style="font-size:${fs};padding:3px 0 3px 6px;text-align:right;vertical-align:top;white-space:nowrap;font-weight:bold">${money(lineTotal(i))}</td>
+      <td class="tk-n" style="font-size:${fs}">${i.qty}× ${esc(itemLabel(i))}${sub}</td>
+      <td class="tk-p" style="font-size:${fs}">${money(lineTotal(i))}</td>
     </tr>`;
   }).join('');
-  return `<table style="width:100%;border-collapse:collapse">${rows}</table>`;
+  return `<table class="tk-items">${rows}</table>`;
 }
 function ticketBlockHTML(b,o,which){
-  if(b.show===false)return '';
+  if(!b||b.show===false)return '';
   const al=tkAlign(b.align);
   const fs=TK_SIZES[b.size||'md']||TK_SIZES.md;
-  const st=`text-align:${al};font-size:${fs};${b.bold?'font-weight:bold;':''}margin:2px 0;word-wrap:break-word`;
-  const wrap=(h,s2)=>`<div style="${s2||st}">${h}</div>`;
+  const st=`text-align:${al};font-size:${fs};${b.bold?'font-weight:bold;':''}margin:1px 0`;
+  const wrap=h=>`<div style="${st}">${h}</div>`;
+  const line=(l,r,extra)=>`<div style="display:flex;justify-content:space-between;gap:6px;font-size:${fs};${b.bold?'font-weight:bold;':''}${extra||''}"><span>${l}</span><span style="white-space:nowrap">${r}</span></div>`;
   switch(b.type){
-    case 'logo': return `<div style="text-align:${al};margin:2px 0"><img src="log.png" style="max-width:62%;max-height:90px" onerror="this.style.display='none'"></div>`;
+    case 'logo': return `<div style="text-align:${al};margin:2px 0"><img src="${tkLogoSrc()}" style="max-width:70%;max-height:22mm" onerror="this.style.display='none'"></div>`;
     case 'negocio': return wrap(BIZ.name);
     case 'direccion': return BIZ.addr.map(l=>wrap(l)).join('');
     case 'tel': return BIZ.tel?wrap('Tel: '+BIZ.tel):'';
-    case 'separador': return `<div style="border-top:1px dashed #000;margin:5px 0"></div>`;
+    case 'separador': return `<div class="tk-sep"></div>`;
     case 'folio': return wrap('Ticket #'+String(o.id).slice(-4));
     case 'fecha': return wrap(fmtDateTime(o.paidAt||o.createdAt));
-    case 'cliente': return wrap('Cliente: '+(o.table||'Público en general'));
-    case 'mesa': return o.mesa?wrap('Mesa: '+o.mesa):'';
-    case 'personas': return o.personas?wrap('Personas: '+o.personas):'';
-    case 'items': return `<div style="text-align:left">${ticketItemsHTML(o,false,fs)}</div>`;
-    case 'items_cocina': return `<div style="text-align:left">${ticketItemsHTML(o,true,fs)}</div>`;
-    case 'total': { const tot=orderTotal(o.items||[])||(+o.total||0); return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-top:2px solid #000;margin-top:5px;padding-top:5px;font-size:${fs};font-weight:bold"><span>TOTAL</span><span>${money(tot)}</span></div>`; }
-    case 'pago': { if(!o.paymentMethod)return ''; let h='Pago: '+metodoLabel(o.paymentMethod); if(o.paymentMethod==='efectivo'&&+o.paidCash){h+='<br>Efectivo: '+money(o.paidCash)+' · Cambio: '+money(o.paidChange||0);} return wrap(h); }
-    case 'cajero': return wrap('Cajero: '+(o.paidBy||userLabel()||'—'));
-    case 'mesero': return o.createdBy?wrap('Atendió: '+o.createdBy):'';
-    case 'notas': return o.notes?wrap('Notas: '+o.notes):'';
-    case 'qr': { const q=getTickets(which).qr; return q?`<div style="text-align:${al};margin-top:6px"><img src="${q}" style="width:120px;height:120px"></div>`:''; }
-    case 'texto': return b.text?wrap(b.text):'';
+    case 'cliente': return wrap('Cliente: '+esc(o.table||'Público en general'));
+    case 'mesa': return o.mesa?wrap('Mesa: '+esc(o.mesa)):'';
+    case 'personas': return o.personas?wrap('Personas: '+(+o.personas||0)):'';
+    case 'items': return `<div style="text-align:left">${ticketItemsHTML(o,fs)}</div>`;
+    case 'subtotal': {
+      const items=o.items||[];
+      const bruto=items.reduce((s,i)=>s+(+i.price||0)*(+i.qty||0)+extrasSum(i),0);
+      const desc=items.reduce((s,i)=>s+lineDiscount(i),0);
+      if(!desc)return '';
+      return line('Subtotal',money(bruto))+line('Descuentos','−'+money(desc));
+    }
+    case 'total': { const tot=orderTotal(o.items||[])||(+o.total||0);
+      return `<div class="tk-total" style="font-size:${fs}"><span>TOTAL</span><span>${money(tot)}</span></div>`; }
+    case 'pago': { if(!o.paymentMethod)return '';
+      let h=line('Pago',metodoLabel(o.paymentMethod));
+      if(o.paymentMethod==='efectivo'&&+o.paidCash){h+=line('Efectivo',money(o.paidCash))+line('Cambio',money(o.paidChange||0));}
+      return `<div style="font-size:${fs};margin:1px 0">${h}</div>`; }
+    case 'cajero': return wrap('Cajero: '+esc(o.paidBy||userLabel()||'—'));
+    case 'mesero': return o.createdBy?wrap('Capturó: '+esc(o.createdBy)):'';
+    case 'notas': return o.notes?wrap('Notas: '+esc(o.notes)):'';
+    case 'qr': { const q=tkQrData(); return q?`<div style="text-align:${al};margin-top:4px"><img src="${q}" style="width:22mm;height:22mm"></div>`:''; }
+    case 'texto': return b.text?wrap(esc(b.text)):'';
     default: return '';
   }
 }
+function tkAlign(a){return a==='center'?'center':a==='right'?'right':'left';}
 function ticketInner(o,which){ return (getTickets(which).blocks||[]).map(b=>ticketBlockHTML(b,o,which)).join(''); }
-let TK_AUTOCLOSE=true;
-function ticketHTML(o,which){
+
+/* Hoja completa lista para la impresora térmica (nada que ajustar a mano). */
+function ticketHTML(o,which,ownerCopy){
   which=which||'caja';
-  return `<html><head><meta charset="utf-8"><base href="${location.href}"><title>${which==='cocina'?'Comanda':'Ticket'} #${String(o.id).slice(-4)}</title><style>
-    @page{size:58mm auto;margin:0}
-    html,body{margin:0;padding:0}
-    *{font-family:'Courier New',monospace;color:#000!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    body{width:56mm;margin:0 auto;padding:6px 4px;color:#000}
-    img{max-width:100%}
-  </style></head><body>${ticketInner(o,which)}</body></html>`;
+  const w=tkWidthMM(), paper=tkPaperMM();
+  const head=ownerCopy?`<div style="text-align:center;font-weight:bold;font-size:12px;border:1px solid #000;padding:2px;margin-bottom:3px">COPIA DEL DUEÑO</div>`:'';
+  return `<html><head><meta charset="utf-8"><base href="${location.href}">
+  <title>Ticket #${String(o.id).slice(-4)}</title><style>
+    @page{size:${paper}mm auto;margin:0}
+    html,body{margin:0;padding:0;background:#fff}
+    *{box-sizing:border-box;font-family:'Courier New',Courier,monospace;color:#000!important;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{width:${w}mm;margin:0 auto;padding:2mm 0 10mm;line-height:1.3;letter-spacing:0}
+    div,span,td{word-break:break-word;overflow-wrap:anywhere}
+    img{max-width:100%;height:auto;display:inline-block}
+    .tk-sep{border-top:1px dashed #000;margin:4px 0}
+    .tk-items{width:100%;border-collapse:collapse;table-layout:fixed}
+    .tk-items .tk-n{padding:2px 0;vertical-align:top;line-height:1.25}
+    .tk-items .tk-p{padding:2px 0 2px 4px;text-align:right;vertical-align:top;white-space:nowrap;font-weight:bold;width:15mm}
+    .tk-total{display:flex;justify-content:space-between;gap:6px;border-top:2px solid #000;
+      margin-top:4px;padding-top:4px;font-weight:bold}
+  </style></head><body>${head}${ticketInner(o,which)}<div style="height:8mm"></div></body></html>`;
 }
-// Impresión mediante iframe oculto. Funciona tanto en clic manual COMO en automático
-// (window.open lo bloquea el navegador cuando se dispara sin clic; el iframe no).
-// Con Chrome en modo --kiosk-printing sale directo sin ver el PDF.
+
+/* Versión en texto plano (32 columnas) que se guarda como copia del dueño. */
+function ticketPlainText(o){
+  const W=32, out=[];
+  const center=s=>{s=String(s).slice(0,W);const p=Math.max(0,Math.floor((W-s.length)/2));return ' '.repeat(p)+s;};
+  const pair=(l,r)=>{l=String(l);r=String(r);
+    if(l.length+r.length+1>W){out.push(l);out.push(' '.repeat(Math.max(0,W-r.length))+r);return;}
+    out.push(l+' '.repeat(W-l.length-r.length)+r);};
+  out.push(center(BIZ.name));
+  BIZ.addr.forEach(l=>out.push(center(l)));
+  if(BIZ.tel)out.push(center('Tel: '+BIZ.tel));
+  out.push('-'.repeat(W));
+  out.push('Ticket #'+String(o.id).slice(-4));
+  out.push(fmtDateTime(o.paidAt||o.createdAt));
+  out.push('Cliente: '+(o.table||'Público en general'));
+  if(o.mesa)out.push('Mesa: '+o.mesa);
+  out.push('-'.repeat(W));
+  (o.items||[]).forEach(i=>{
+    pair((i.qty+'x '+itemLabel(i)).slice(0,W-9),money(lineTotal(i)));
+    if((+i.qty||0)>1)out.push('   '+i.qty+' x '+money(i.price));
+    if(i.note)out.push('   • '+i.note);
+    (i.extras||[]).forEach(e=>out.push('   + '+e.name+' '+money(e.price)));
+    if(i.discount&&i.discount.type)out.push('   '+discLabel(i.discount)+' -'+money(lineDiscount(i)));
+  });
+  out.push('-'.repeat(W));
+  pair('TOTAL',money(orderTotal(o.items||[])||(+o.total||0)));
+  if(o.paymentMethod)out.push('Pago: '+metodoLabel(o.paymentMethod));
+  if(o.paymentMethod==='efectivo'&&+o.paidCash){pair('Efectivo',money(o.paidCash));pair('Cambio',money(o.paidChange||0));}
+  out.push('Cajero: '+(o.paidBy||userLabel()||'—'));
+  if(o.createdBy)out.push('Capturó: '+o.createdBy);
+  out.push(center('¡Gracias por su compra!'));
+  return out.join('\n');
+}
+
+/* Impresión con iframe oculto: funciona con clic y en automático.
+   Espera a que carguen logo y QR para que el ticket nunca salga incompleto.
+   Con Chrome en modo --kiosk-printing sale directo, sin diálogo. */
 function printDoc(html){
   const prev=document.getElementById('__pkPrintFrame'); if(prev)prev.remove();
   const f=document.createElement('iframe');
@@ -1485,38 +1684,33 @@ function printDoc(html){
   const win=f.contentWindow, doc=win.document;
   doc.open(); doc.write(html); doc.close();
   let done=false;
-  const fire=()=>{ if(done)return; done=true; try{win.focus();win.print();}catch(e){console.error('print',e);} setTimeout(()=>{try{f.remove();}catch(e){}},4000); };
-  try{ win.addEventListener('load',()=>setTimeout(fire,250)); }catch(e){}
-  setTimeout(fire,1200); // respaldo por si el evento load no dispara
+  const fire=()=>{ if(done)return; done=true;
+    try{win.focus();win.print();}catch(e){console.error('print',e);showToast('No se pudo abrir la impresión');}
+    setTimeout(()=>{try{f.remove();}catch(e){}},6000); };
+  const waitImages=()=>{
+    const imgs=[...doc.images].filter(im=>!im.complete);
+    if(!imgs.length)return fire();
+    let left=imgs.length, go=()=>{ if(--left<=0) fire(); };
+    imgs.forEach(im=>{im.addEventListener('load',go);im.addEventListener('error',go);});
+    setTimeout(fire,2500);           // si alguna imagen no carga, imprime igual
+  };
+  try{ win.addEventListener('load',()=>setTimeout(waitImages,120)); }catch(e){}
+  setTimeout(waitImages,700);        // respaldo por si el evento load no dispara
   return win;
 }
 window.openPrintWindow=printDoc; // compatibilidad
-window.printTicket=function(id){const o=ordersCache[id];if(!o)return;printDoc(ticketHTML(o,'caja'));};
-window.printComanda=function(id){const o=ordersCache[id];if(!o)return;printDoc(ticketHTML(o,'cocina'));};
-
-/* ---- Auto-impresión de comandas (kiosk-printing) ---- */
-const APP_START=Date.now();
-let PRINTED=new Set();
-try{PRINTED=new Set(JSON.parse(localStorage.getItem('pk_printed')||'[]'));}catch(e){}
-function savePrinted(){try{localStorage.setItem('pk_printed',JSON.stringify([...PRINTED].slice(-400)));}catch(e){}}
-function autoPrintOn(){try{return localStorage.getItem('pk_autoprint')==='1';}catch(e){return false;}}
-window.toggleAutoPrint=function(el){try{localStorage.setItem('pk_autoprint',el.checked?'1':'0');}catch(e){}showToast(el.checked?'Auto-impresión de comandas ACTIVADA':'Auto-impresión desactivada');};
-function autoPrintNewOrders(){
-  if(!autoPrintOn())return;
-  getOrders().forEach(o=>{
-    if(!o||o.status==='cancelado')return;
-    const t=o.createdAt?new Date(o.createdAt).getTime():0;
-    if(t>=APP_START && !PRINTED.has(o.id)){ PRINTED.add(o.id); savePrinted(); printComanda(o.id); }
-  });
-}
+window.printTicket=function(id){const o=ordersCache[id];if(!o){showToast('Ese pedido ya no existe');return;}printDoc(ticketHTML(o,'caja'));};
+window.printOwnerCopy=function(id){const o=ordersCache[id];if(!o){showToast('Ese pedido ya no existe');return;}printDoc(ticketHTML(o,'caja',true));};
 
 /* ---- Editor de tickets (Config) ---- */
 let TK_EDIT=null, TK_WHICH='caja';
-const TK_SAMPLE={id:1234,table:'Juan Pérez',mesa:'5',personas:2,paidBy:'aldo',createdAt:new Date().toISOString(),paymentMethod:'efectivo',paidCash:250,paidChange:20,total:230,notes:'Sin cebolla, término medio',items:[{name:'Especial',size:'Doble',qty:2,price:100,note:'bien cocida',extras:[{name:'Tira de Tocino',price:12}]},{name:'Papas Gajo',qty:1,price:60}]};
+const TK_SAMPLE={id:1234,table:'Juan Pérez',mesa:'5',personas:2,paidBy:'aldo',createdBy:'manu',createdAt:new Date().toISOString(),paymentMethod:'efectivo',paidCash:250,paidChange:20,total:230,notes:'Sin cebolla, término medio',items:[{name:'Especial',size:'Doble',qty:2,price:100,note:'bien cocida',extras:[{name:'Tira de Tocino',price:12}]},{name:'Papas Gajo',qty:1,price:60}]};
 function renderTicketEditor(){
   const host=document.getElementById('tk-blocks'); if(!host)return;
-  const sel=document.getElementById('tk-which'); TK_WHICH=sel?sel.value:'caja';
-  if(!TK_EDIT||TK_EDIT._which!==TK_WHICH){ const g=getTickets(TK_WHICH); TK_EDIT={_which:TK_WHICH,qr:g.qr||null,blocks:JSON.parse(JSON.stringify(g.blocks||[]))}; }
+  TK_WHICH='caja';
+  if(!TK_EDIT||TK_EDIT._which!==TK_WHICH){ const g=getTickets(TK_WHICH);
+    TK_EDIT={_which:TK_WHICH,qr:g.qr||null,logo:g.logo||null,width:+g.width||TK_DEFAULT_WIDTH,blocks:JSON.parse(JSON.stringify(g.blocks||[]))}; }
+  const wIn=document.getElementById('tk-width'); if(wIn&&document.activeElement!==wIn)wIn.value=TK_EDIT.width;
   const alignBtn=(b,i,val,ic)=>`<button onclick="tkAlign2(${i},'${val}')" class="tk-mini ${(b.align||'left')===val?'on':''}"><i class="fas ${ic}"></i></button>`;
   host.innerHTML=TK_EDIT.blocks.map((b,i)=>{
     const isText=b.type==='texto';
@@ -1541,7 +1735,21 @@ function renderTicketEditor(){
   }).join('');
   ticketPreview();
 }
-function ticketPreview(){ const p=document.getElementById('tk-preview'); if(!p||!TK_EDIT)return; const save=ticketsCache[TK_WHICH]; ticketsCache[TK_WHICH]={qr:TK_EDIT.qr,blocks:TK_EDIT.blocks}; p.innerHTML=ticketInner(TK_SAMPLE,TK_WHICH); ticketsCache[TK_WHICH]=save; }
+function ticketPreview(){
+  const p=document.getElementById('tk-preview'); if(!p||!TK_EDIT)return;
+  const save=ticketsCache[TK_WHICH];
+  ticketsCache[TK_WHICH]={qr:TK_EDIT.qr,logo:TK_EDIT.logo,width:TK_EDIT.width,blocks:TK_EDIT.blocks};
+  p.style.width=(TK_EDIT.width/25.4*96).toFixed(0)+'px';   // milímetros reales en pantalla
+  p.innerHTML=ticketInner(TK_SAMPLE,TK_WHICH);
+  ticketsCache[TK_WHICH]=save;
+}
+window.tkSetWidth=function(v,fromBtn){
+  if(!TK_EDIT)return;
+  const w=Math.min(80,Math.max(30,+v||TK_DEFAULT_WIDTH));
+  TK_EDIT.width=w;
+  if(fromBtn){const i=document.getElementById('tk-width');if(i)i.value=w;}
+  ticketPreview();
+};
 window.tkAlign2=function(i,v){TK_EDIT.blocks[i].align=v;renderTicketEditor();};
 window.tkSize=function(i,v){TK_EDIT.blocks[i].size=v;renderTicketEditor();};
 window.tkBold=function(i){TK_EDIT.blocks[i].bold=!TK_EDIT.blocks[i].bold;renderTicketEditor();};
@@ -1550,47 +1758,75 @@ window.tkMove=function(i,d){const j=i+d;if(j<0||j>=TK_EDIT.blocks.length)return;
 window.tkTextEdit=function(i,v){TK_EDIT.blocks[i].text=v;ticketPreview();};
 window.tkDel=function(i){TK_EDIT.blocks.splice(i,1);renderTicketEditor();};
 window.tkAddText=function(){TK_EDIT.blocks.push({id:'t'+Date.now(),type:'texto',text:'Texto nuevo',show:true,align:'center',size:'md'});renderTicketEditor();};
-window.tkUploadQR=function(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{TK_EDIT.qr=e.target.result;ticketPreview();showToast('QR cargado (dale Guardar)');};r.readAsDataURL(f);};
-window.saveTickets=function(){ if(!TK_EDIT)return; db.ref('ticketConfig/'+TK_WHICH).set({qr:TK_EDIT.qr||null,blocks:TK_EDIT.blocks}); showToast('Ticket guardado ✓'); };
-window.tkReset=function(){ const g=JSON.parse(JSON.stringify(DEFAULT_TICKETS[TK_WHICH]||DEFAULT_TICKETS.caja)); if(!confirm('¿Restaurar el diseño ORIGINAL de este ticket ('+TK_WHICH+')? Se reemplazan los bloques por los de fábrica.'))return; TK_EDIT={_which:TK_WHICH,qr:null,blocks:g.blocks}; db.ref('ticketConfig/'+TK_WHICH).set({qr:null,blocks:g.blocks}); renderTicketEditor(); showToast('Ticket restaurado a su diseño original ✓'); };
-window.tkTestPrint=function(){ printDoc(ticketHTML(TK_SAMPLE,TK_WHICH)); };
+function tkReadImage(ev,cb){
+  const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  if(f.size>900000){showToast('La imagen pesa mucho (máx. 900 KB). Usa una más chica.');ev.target.value='';return;}
+  const r=new FileReader();
+  r.onload=e=>{cb(e.target.result);ev.target.value='';};
+  r.onerror=()=>{showToast('No se pudo leer la imagen');ev.target.value='';};
+  r.readAsDataURL(f);
+}
+window.tkUploadQR=function(ev){tkReadImage(ev,d=>{TK_EDIT.qr=d;ticketPreview();showToast('QR cargado (dale Guardar)');});};
+window.tkUploadLogo=function(ev){tkReadImage(ev,d=>{TK_EDIT.logo=d;ticketPreview();showToast('Logo cargado (dale Guardar)');});};
+window.saveTickets=function(){
+  if(!TK_EDIT)return;
+  db.ref('ticketConfig/'+TK_WHICH).set({qr:TK_EDIT.qr||null,logo:TK_EDIT.logo||null,width:+TK_EDIT.width||TK_DEFAULT_WIDTH,blocks:TK_EDIT.blocks})
+    .then(()=>showToast('Ticket guardado ✓'))
+    .catch(e=>{console.error(e);showToast('No se pudo guardar el ticket');});
+};
+window.tkReset=function(){
+  if(!confirm('¿Restaurar el diseño ORIGINAL del ticket? Se reemplazan los bloques por los de fábrica.'))return;
+  const g=JSON.parse(JSON.stringify(DEFAULT_TICKETS.caja));
+  TK_EDIT={_which:'caja',qr:null,logo:null,width:TK_DEFAULT_WIDTH,blocks:g.blocks};
+  db.ref('ticketConfig/caja').set({qr:null,logo:null,width:TK_DEFAULT_WIDTH,blocks:g.blocks});
+  renderTicketEditor(); showToast('Ticket restaurado a su diseño original ✓');
+};
+window.tkTestPrint=function(){
+  // Imprime con la configuración que está en pantalla (aunque no se haya guardado).
+  const save=ticketsCache[TK_WHICH];
+  if(TK_EDIT)ticketsCache[TK_WHICH]={qr:TK_EDIT.qr,logo:TK_EDIT.logo,width:TK_EDIT.width,blocks:TK_EDIT.blocks};
+  printDoc(ticketHTML(TK_SAMPLE,TK_WHICH));
+  ticketsCache[TK_WHICH]=save;
+};
 
 /* ============ POS: Nueva orden / Editar (personal) ============ */
 const EXTRAS_PRESET=['Esencia de Lavanda','Vainilla','Mocha','Caramelo','Salted Chocolate Caramel','Jamón y Queso'];
-let posCart=[], posCat='alimentos', posSel={}, posEditId=null, extraLine=null;
+let posCart=[], posCat=null, posSel={}, posEditId=null, extraLine=null;
 function posKey(n,s){return n+'|'+(s||'');}
-function posReset(){posCart=[];posCat='alimentos';posSel={};posEditId=null;
-  document.getElementById('pos-name').value='';document.getElementById('pos-phone').value='';
-  const mm=document.getElementById('pos-mesa');if(mm)mm.value='';
-  const pp=document.getElementById('pos-personas');if(pp)pp.value='';
-  const s=document.getElementById('pos-search');if(s)s.value='';posValidate();}
-window.openPOS=function(){
-  posReset();
-  document.getElementById('pos-title').innerHTML='<i class="fas fa-plus-circle gold"></i> Nueva orden';
-  document.getElementById('pos-send-btn').innerHTML='<i class="fas fa-paper-plane"></i> Enviar a cocina';
-  renderPOS(); openModal('posModal');
+const posVal=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+function posReset(){
+  posCart=[];posSel={};posEditId=null;
+  posVal('pos-name','');posVal('pos-phone','');posVal('pos-mesa','');posVal('pos-personas','');posVal('pos-search','');
+  const t=document.getElementById('pos-title');
+  if(t)t.innerHTML='<i class="fas fa-cart-shopping gold"></i> Venta nueva';
+  const c=document.getElementById('pos-cancel-edit'); if(c)c.classList.add('hidden');
+  renderCajaSafe();
+}
+// Cargar un pedido guardado en el punto de venta para editarlo.
+window.editOrder=function(id){
+  const o=ordersCache[id]; if(!o){showToast('Ese pedido ya no existe');return;}
+  if(o.status==='cobrado'){showToast('Ese pedido ya fue cobrado');return;}
+  posCart=(o.items||[]).map(i=>({name:i.name,price:+i.price||0,size:i.size||'',qty:+i.qty||1,note:i.note||'',
+    extras:(i.extras||[]).map(e=>({name:e.name,price:+e.price||0})),
+    discount:i.discount&&i.discount.type?{label:i.discount.label||'',type:i.discount.type,value:+i.discount.value||0}:null}));
+  posEditId=id; posSel={};
+  posVal('pos-name',o.table||'');posVal('pos-phone',o.phone||'');posVal('pos-mesa',o.mesa||'');posVal('pos-personas',o.personas||'');
+  const t=document.getElementById('pos-title');
+  if(t)t.innerHTML='<i class="fas fa-pen gold"></i> Editando #'+String(id).slice(-4);
+  const c=document.getElementById('pos-cancel-edit'); if(c)c.classList.remove('hidden');
+  renderCajaSafe();
+  window.scrollTo({top:0,behavior:'smooth'});
+  showToast('Pedido cargado en la caja');
 };
-window.openPOSedit=function(id){
-  const o=ordersCache[id]; if(!o)return;
-  posReset(); posEditId=id;
-  posCart=(o.items||[]).map(i=>({name:i.name,price:+i.price,size:i.size||'',qty:i.qty,note:i.note||'',extras:(i.extras||[]).map(e=>({name:e.name,price:+e.price||0})),discount:i.discount&&i.discount.type?{...i.discount}:null}));
-  document.getElementById('pos-name').value=o.table||'';
-  document.getElementById('pos-phone').value=o.phone||'';
-  const mm=document.getElementById('pos-mesa');if(mm)mm.value=o.mesa||'';
-  const pp=document.getElementById('pos-personas');if(pp)pp.value=o.personas||'';
-  document.getElementById('pos-title').innerHTML='<i class="fas fa-pen gold"></i> Editar orden #'+String(id).slice(-4);
-  document.getElementById('pos-send-btn').innerHTML='<i class="fas fa-floppy-disk"></i> Guardar cambios';
-  renderPOS(); posValidate(); openModal('posModal');
+window.posCancelEdit=function(){posReset();showToast('Edición cancelada');};
+window.posClear=function(){
+  if(posCart.length&&!confirm('¿Vaciar la venta en curso?'))return;
+  posCart=[]; renderCajaSafe();
 };
-window.posClear=function(){ posCart=[]; renderPOS(); };
 window.posSetCat=function(c){ posCat=c; const s=document.getElementById('pos-search'); if(s)s.value=''; renderPOS(); };
 window.posPickSize=function(name,price,size){ posSel[slugify(name)]={price:+price,size}; renderPOS(); };
 window.posSetNote=function(idx,val){ if(posCart[idx])posCart[idx].note=val; };
-window.posValidate=function(){
-  const n=document.getElementById('pos-name');
-  if(!n)return;
-  n.style.borderColor=n.value.trim().length>0?'#22c55e':'rgba(255,255,255,.2)';
-};
+function renderCajaSafe(){ if(activeTab==='caja')renderCaja(); else renderPOS(); }
 window.posAdd=function(name,price,size){
   size=size||''; const f=posCart.find(i=>posKey(i.name,i.size)===posKey(name,size));
   if(f)f.qty++; else posCart.push({name,price:+price,size,qty:1,note:'',extras:[]});
@@ -1606,7 +1842,11 @@ window.openExtras=function(idx){
   extraLine=idx; const it=posCart[idx]; if(!it)return;
   document.getElementById('extras-title').textContent='Extras · '+itemLabel(it);
   document.getElementById('extra-name').value='';document.getElementById('extra-price').value='';
-  document.getElementById('extras-presets').innerHTML=EXTRAS_PRESET.map(e=>`<button class="size-btn" onclick="document.getElementById('extra-name').value='${ea(e)}';document.getElementById('extra-price').focus()">${e}</button>`).join('');
+  // Los extras rápidos salen del propio menú (categoría "Extras"); si no hay, usa la lista base.
+  const menuExtras=(MENU_DATA.extras||[]).filter(x=>x&&x.name);
+  document.getElementById('extras-presets').innerHTML = menuExtras.length
+    ? menuExtras.map(e=>`<button class="size-btn" onclick="quickExtra('${ea(e.name)}',${+e.price||0})">${e.name} <b class="gold">$${+e.price||0}</b></button>`).join('')
+    : EXTRAS_PRESET.map(e=>`<button class="size-btn" onclick="document.getElementById('extra-name').value='${ea(e)}';document.getElementById('extra-price').focus()">${e}</button>`).join('');
   renderExtrasCurrent();
   openModal('extrasModal');
 };
@@ -1615,6 +1855,12 @@ function renderExtrasCurrent(){
   const ex=(it&&it.extras)||[];
   cont.innerHTML=ex.length?('<p class="text-xs text-white/40 mb-1">Extras agregados:</p>'+ex.map((e,i)=>`<div class="flex items-center justify-between text-sm border-b border-white/5 py-1"><span>${e.name}</span><span class="gold">${money(e.price)} <button class="text-white/40 hover:text-red-400 ml-2" onclick="removeExtra(${i})">✕</button></span></div>`).join('')):'';
 }
+// Un clic en un extra del menú lo agrega directo (con su precio).
+window.quickExtra=function(name,price){
+  const it=posCart[extraLine]; if(!it)return;
+  it.extras=it.extras||[]; it.extras.push({name,price:+price||0});
+  renderExtrasCurrent(); renderPOS(); showToast('+ '+name);
+};
 window.addExtra=function(){
   const it=posCart[extraLine]; if(!it)return;
   const name=document.getElementById('extra-name').value.trim();
@@ -1674,8 +1920,19 @@ window.posToggleMod=function(idx,label){
   it.note=parts.join(', ');renderPOS();
 };
 function renderPOS(){
-  document.getElementById('pos-cat-tabs').innerHTML=Object.keys(MENU_DATA).map(c=>
-    `<button class="tab-btn ${c===posCat?'active':''}" onclick="posSetCat('${c}')">${SECTION_TITLES[c]}</button>`).join('');
+  const cats=Object.keys(MENU_DATA);
+  if(!cats.length)return;
+  if(!posCat||!MENU_DATA[posCat])posCat=cats[0];   // siempre arranca con una categoría válida
+  const tabs=document.getElementById('pos-cat-tabs'); if(!tabs)return;
+  // No re-dibujar el carrito mientras el cajero escribe una nota (perdería el cursor).
+  const act=document.activeElement;
+  const noteIdx=act&&act.dataset&&act.dataset.posnote!==undefined?act.dataset.posnote:null;
+  const selStart=noteIdx!==null?act.selectionStart:0, selEnd=noteIdx!==null?act.selectionEnd:0;
+  // Conserva la posición del scroll (si no, la lista brincaría al inicio cada 30 s).
+  const itemsBox=document.getElementById('pos-items'), cartBox=document.getElementById('pos-ticket');
+  const itemsTop=itemsBox?itemsBox.scrollTop:0, cartTop=cartBox?cartBox.scrollTop:0;
+  tabs.innerHTML=cats.map(c=>
+    `<button class="tab-btn ${c===posCat?'active':''}" onclick="posSetCat('${ea(c)}')">${SECTION_TITLES[c]||c}</button>`).join('');
   const q=norm((document.getElementById('pos-search')||{}).value||'');
   let list;
   if(q){ list=[]; Object.keys(MENU_DATA).forEach(c=>(MENU_DATA[c]||[]).forEach(it=>{if(norm(it.name).includes(q))list.push({it,cat:c});})); }
@@ -1695,13 +1952,13 @@ function renderPOS(){
   if(!posCart.length){tk.innerHTML='<p class="text-white/30 text-sm text-center py-6">Sin productos aún</p>';}
   else tk.innerHTML=posCart.map((i,idx)=>`<div class="border-b border-white/5 py-1.5">
       <div class="flex items-center justify-between gap-2 text-sm">
-        <span class="flex-1 min-w-0 truncate">${i.qty}× ${itemLabel(i)}</span>
+        <span class="flex-1 min-w-0 truncate">${i.qty}× ${esc(itemLabel(i))}</span>
         <span class="gold">${money(lineTotal(i))}</span>
         <button class="text-white/40 hover:text-red-400 ml-1" onclick="posRemove('${ea(i.name)}','${ea(i.size||'')}')">✕</button>
       </div>
-      ${(i.extras||[]).map(e=>`<div class="text-xs text-green-300/80 pl-2">+ ${e.name} · ${money(e.price)}</div>`).join('')}
+      ${(i.extras||[]).map(e=>`<div class="text-xs text-green-300/80 pl-2">+ ${esc(e.name)} · ${money(e.price)}</div>`).join('')}
       ${i.discount&&i.discount.type?`<div class="text-xs text-orange-300 pl-2">${discLabel(i.discount)} · −${money(lineDiscount(i))}</div>`:''}
-      <input class="inp mt-1" style="padding:.25rem .5rem;font-size:.72rem" value="${(i.note||'').replace(/"/g,'&quot;')}" placeholder="Nota (ej. sin cebolla)" oninput="posSetNote(${idx},this.value)">
+      <input class="inp mt-1" data-posnote="${idx}" style="padding:.25rem .5rem;font-size:.72rem" value="${(i.note||'').replace(/"/g,'&quot;')}" placeholder="Nota (ej. sin cebolla)" oninput="posSetNote(${idx},this.value)">
       <div class="flex flex-wrap gap-1 mt-1">${getMods().map(m=>{const on=(i.note||'').split(',').map(x=>x.trim()).includes(m);return `<button class="text-[10px] px-2 py-0.5 rounded-full ${on?'bg-[#F26522] text-black font-semibold':'bg-white/10 text-white/70'}" onclick="posToggleMod(${idx},'${ea(m)}')">${m}</button>`;}).join('')}</div>
       <div class="flex gap-3 mt-1">
         <button class="text-[#F26522] text-xs hover:underline" onclick="openExtras(${idx})"><i class="fas fa-plus-circle"></i> Extras</button>
@@ -1709,34 +1966,57 @@ function renderPOS(){
       </div>
     </div>`).join('');
   document.getElementById('pos-total').textContent=money(orderTotal(posCart));
-}
-window.posSend=function(){
-  if(!posCart.length){showToast('Agrega productos');return;}
-  const name=document.getElementById('pos-name').value.trim();
-  if(!name){showToast('Escribe el nombre');posValidate();return;}
-  const phone=document.getElementById('pos-phone').value.trim();
-  const mesa=(document.getElementById('pos-mesa').value||'').trim();
-  const personas=+document.getElementById('pos-personas').value||0;
-  const items=posCart.map(i=>{const o={name:i.name,price:+i.price,size:i.size||'',qty:i.qty,note:i.note||'',extras:(i.extras||[]).map(e=>({name:e.name,price:+e.price||0}))};if(i.discount&&i.discount.type)o.discount={label:i.discount.label||'',type:i.discount.type,value:+i.discount.value||0};return o;});
-  const total=orderTotal(items);
-  const by=userLabel();
-  // Modo edición: actualiza la orden existente (misma comanda).
-  if(posEditId){
-    db.ref('orders/'+posEditId).update({items,total,table:name,phone,mesa,personas,editadoPor:by});
-    closeModal('posModal');showToast('Orden actualizada ✓');posReset();return;
+  if(itemsBox)itemsBox.scrollTop=itemsTop;
+  if(cartBox)cartBox.scrollTop=cartTop;
+  // Devuelve el cursor a la nota que se estaba escribiendo.
+  if(noteIdx!==null){
+    const again=tk.querySelector('[data-posnote="'+noteIdx+'"]');
+    if(again){again.focus();try{again.setSelectionRange(selStart,selEnd);}catch(e){}}
   }
-  const id=Date.now();
-  db.ref('orders').once('value').then(snap=>{
-    const all=snap.val()||{};
-    const ex=Object.values(all).find(o=>{if(!o||o.status==='cobrado'||o.status==='cancelado')return false;if(mesa)return String(o.mesa||'')===String(mesa);return o.table&&norm(o.table)===norm(name);});
-    if(ex){
-      const merged=Array.isArray(ex.items)?ex.items.map(i=>({...i})):[];
-      items.forEach(c=>{const f=merged.find(i=>posKey(i.name,i.size)===posKey(c.name,c.size));if(f){f.qty+=c.qty;if(c.note)f.note=c.note;if(c.extras&&c.extras.length)f.extras=(f.extras||[]).concat(c.extras);}else merged.push({...c});});
-      return db.ref('orders/'+ex.id).update({items:merged,total:orderTotal(merged),status:'nuevo',phone:phone||ex.phone||'',mesa:mesa||ex.mesa||'',personas:personas||ex.personas||0}).then(()=>'Se sumó al pedido de '+(ex.mesa?('Mesa '+ex.mesa):ex.table)+' 🍞');
-    }
-    return db.ref('orders/'+id).set({id,table:name,phone,mesa,personas,notes:'',items,total,status:'nuevo',createdAt:new Date().toISOString(),createdBy:by}).then(()=>'¡Orden enviada a cocina! 🍞');
-  }).then(msg=>{posReset();closeModal('posModal');showToast(msg);})
-   .catch(e=>{console.error(e);showToast('Error al enviar la orden');});
+}
+/* ---- Guardar / cobrar la venta que está en la caja ---- */
+function posCollect(){
+  if(!posCart.length){showToast('Agrega platillos a la venta');return null;}
+  const items=posCart.map(i=>{
+    const o={name:i.name,price:+i.price||0,size:i.size||'',qty:+i.qty||1,note:i.note||'',
+             extras:(i.extras||[]).map(e=>({name:e.name||'',price:+e.price||0}))};
+    if(i.discount&&i.discount.type)o.discount={label:i.discount.label||'',type:i.discount.type,value:+i.discount.value||0};
+    return o;});
+  return {
+    name:(document.getElementById('pos-name').value||'').trim()||'Mostrador',
+    phone:(document.getElementById('pos-phone').value||'').trim(),
+    mesa:(document.getElementById('pos-mesa').value||'').trim(),
+    personas:+document.getElementById('pos-personas').value||0,
+    items, total:orderTotal(items)
+  };
+}
+// Escribe el pedido en Firebase y lo deja disponible al instante en la caché local.
+function persistOrder(d){
+  const id=posEditId||Date.now();
+  const prev=posEditId?(ordersCache[id]||{}):{};
+  const ord=Object.assign({},prev,{
+    id, table:d.name, phone:d.phone, mesa:d.mesa, personas:d.personas,
+    notes:prev.notes||'', items:d.items, total:d.total,
+    status:'guardado',
+    createdAt:prev.createdAt||new Date().toISOString(),
+    createdBy:prev.createdBy||userLabel()||'—'
+  });
+  if(posEditId)ord.editadoPor=userLabel()||'—';
+  ordersCache[id]=ord;
+  db.ref('orders/'+id).set(ord).catch(e=>{console.error(e);showToast('⚠️ Sin conexión: revisa el internet');});
+  return id;
+}
+window.posSave=function(){
+  const d=posCollect(); if(!d)return;
+  const editing=!!posEditId;
+  persistOrder(d);
+  posReset();
+  showToast(editing?'Pedido actualizado ✓':'Pedido guardado · cóbralo cuando quieras');
+};
+window.posCharge=function(){
+  const d=posCollect(); if(!d)return;
+  const id=persistOrder(d);   // se guarda primero: si cancelas el cobro, la venta no se pierde
+  openPay(id);
 };
 
 /* ============ INVENTARIO ============ */
@@ -2044,16 +2324,16 @@ function renderReportes(){
       <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();shareTicket(${o.id})" title="PDF"><i class="fab fa-whatsapp text-green-400"></i></button>
       <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();printTicket(${o.id})" title="Imprimir"><i class="fas fa-print"></i></button>
     </div></td></tr>`).join('');
-  // personas (clientes distintos que compraron en el periodo)
-  document.getElementById('rep-personas').textContent=new Set(sales.map(o=>norm(o.table))).size;
-  // clientes por día
+  // personas atendidas (lo que se capturó en cada venta; si no se puso, cuenta 1)
+  document.getElementById('rep-personas').textContent=sales.reduce((s,o)=>s+(+o.personas||1),0);
+  // personas por día
   const byDay={};
-  sales.forEach(o=>{const d=dayStr(o.paidAt);if(!d)return;(byDay[d]=byDay[d]||new Set()).add(norm(o.table));});
+  sales.forEach(o=>{const d=dayStr(o.paidAt);if(!d)return;byDay[d]=(byDay[d]||0)+(+o.personas||1);});
   const days=Object.entries(byDay).sort((a,b)=>b[0]<a[0]?-1:1);
-  const maxd=days.length?Math.max(...days.map(d=>d[1].size)):1;
-  document.getElementById('rep-personas-dia').innerHTML=days.length?days.map(([d,set])=>`
-    <div class="mb-2"><div class="flex justify-between text-sm mb-1"><span>${d.split('-').reverse().join('/')}</span><span class="font-semibold text-blue-300">${set.size} ${set.size===1?'persona':'personas'}</span></div>
-    <div class="h-1.5 bg-white/10 rounded-full"><div class="h-1.5 rounded-full" style="width:${set.size/maxd*100}%;background:#93c5fd"></div></div></div>`).join(''):'<p class="text-white/30 text-sm py-4 text-center">Sin clientes en este periodo.</p>';
+  const maxd=days.length?Math.max(...days.map(d=>d[1])):1;
+  document.getElementById('rep-personas-dia').innerHTML=days.length?days.map(([d,n])=>`
+    <div class="mb-2"><div class="flex justify-between text-sm mb-1"><span>${d.split('-').reverse().join('/')}</span><span class="font-semibold text-blue-300">${n} ${n===1?'persona':'personas'}</span></div>
+    <div class="h-1.5 bg-white/10 rounded-full"><div class="h-1.5 rounded-full" style="width:${n/maxd*100}%;background:#93c5fd"></div></div></div>`).join(''):'<p class="text-white/30 text-sm py-4 text-center">Sin clientes en este periodo.</p>';
   // top productos
   const top=Object.entries(prod).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const maxv=top.length?top[0][1]:1;
@@ -2096,31 +2376,30 @@ document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>
 function updateBadge(id,n){const b=document.getElementById(id);if(!b)return;b.textContent=n;b.classList.toggle('hidden',!n);}
 
 function renderAll(){
-  if(activeTab==='cocina')renderCocina();
-  else if(activeTab==='caja')renderCaja();
+  if(!currentUser)return;                       // sin sesión no hay nada que dibujar
+  if(activeTab==='caja')renderCaja();
   else if(activeTab==='inventario'){renderInv();if(invView==='recetas')renderRecetas();}
   else if(activeTab==='costos')renderCostos();
   else if(activeTab==='reportes')renderReportes();
   else if(activeTab==='config')renderConfig();
   else if(activeTab==='clientes')renderClientes();
   // badges siempre actualizados aunque no esté la pestaña activa
-  updateBadge('badge-cocina',getOrders().filter(o=>ACTIVE.includes(o.status)).length);
-  updateBadge('badge-caja',getOrders().filter(o=>o.status==='listo').length);
+  updateBadge('badge-caja',getOrders().filter(o=>o&&PENDING.includes(o.status)).length);
   updateBadge('badge-inv',getInv().filter(it=>(+it.stock)<=(+it.min)).length);
 }
 
 /* ============ Listeners en tiempo real de Firebase ============ */
-let lastNew=0, firstSnapshot=true;
 function setupListeners(){
   db.ref('orders').on('value',s=>{
     ordersCache=s.val()||{};
-    const n=getOrders().filter(o=>o.status==='nuevo').length;
-    if(!firstSnapshot && n>lastNew){beep();showToast('🔔 ¡Nuevo pedido!');}
-    if(!firstSnapshot) autoPrintNewOrders();
-    lastNew=n;firstSnapshot=false;
     renderAll();
   });
-  db.ref('ticketConfig').on('value',s=>{ticketsCache=s.val()||{};if(activeTab==='config'&&typeof renderTicketEditor==='function'){/*no reset*/}});
+  db.ref('ticketConfig').on('value',s=>{
+    ticketsCache=s.val()||{};
+    const lg=ticketsCache.caja&&ticketsCache.caja.logo;
+    if(lg)imgToData(lg).then(d=>{TK.logoCfg=d;}); else TK.logoCfg=null;
+    if(activeTab==='config'&&typeof renderTicketEditor==='function'&&!TK_EDIT)renderTicketEditor();
+  });
   db.ref('modifiers').on('value',s=>{const v=s.val();modifiersCache=Array.isArray(v)?v:(v?Object.values(v):null);if(activeTab==='config'&&typeof renderModsEditor==='function')renderModsEditor();});
   db.ref('inventory').on('value',s=>{invCache=s.val()||{};renderAll();});
   db.ref('expenses').on('value',s=>{expCache=s.val()||{};renderAll();});
@@ -2238,8 +2517,8 @@ setInterval(tick,1000);tick();
 
 applySession();
 renderAll();
-// Sincroniza el switch de auto-impresión con lo guardado en esta compu
-try{const _ap=document.getElementById('autoprint-toggle');if(_ap)_ap.checked=(localStorage.getItem('pk_autoprint')==='1');}catch(e){}
+// Recuerda si el resumen del día estaba abierto en esta compu
+try{ if(localStorage.getItem('pk_resumen')==='1'){const b=document.getElementById('caja-stats');if(b){b.classList.remove('hidden');document.getElementById('resumen-lbl').textContent='Ocultar resumen';}} }catch(e){}
 </script>
 </body>
 </html>
