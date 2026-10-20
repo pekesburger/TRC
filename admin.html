@@ -13,6 +13,7 @@
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
   // ===== Configuración de Firebase (proyecto pekes-8fe6b) =====
   const firebaseConfig = {
@@ -27,6 +28,25 @@
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
+
+  /* ===== Acceso seguro a la base de datos =====
+     La app entra a Firebase de forma anónima. Con eso las reglas de la base
+     pueden exigir autenticación y nadie de fuera puede leer ni borrar tus
+     ventas. Si falla, la app avisa en la barra de arriba. */
+  var PK_AUTH={ok:false,error:'',listo:false};
+  try{
+    var pkAuth=firebase.auth();
+    pkAuth.onAuthStateChanged(function(u){
+      PK_AUTH.ok=!!u; PK_AUTH.listo=true;
+      if(window.pkAuthChanged)window.pkAuthChanged();
+    });
+    pkAuth.signInAnonymously().catch(function(e){
+      PK_AUTH.ok=false; PK_AUTH.listo=true;
+      PK_AUTH.error=(e&&e.code)||'error';
+      console.warn('Firebase Auth:',e);
+      if(window.pkAuthChanged)window.pkAuthChanged();
+    });
+  }catch(e){ PK_AUTH.listo=true; PK_AUTH.error='sin-auth'; console.warn(e); }
 </script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@400;500;600&display=swap');
@@ -107,6 +127,7 @@ tr.low td{background:rgba(239,68,68,.08)}
       <button class="tab-btn" data-tab="config"><i class="fas fa-gear"></i> Config <i class="fas fa-lock text-xs opacity-60"></i></button>
     </nav>
     <div class="flex items-center gap-2">
+      <span id="auth-chip" class="text-xs hidden sm:inline-flex items-center gap-1" title="Conexión con la base de datos"></span>
       <span id="user-chip" class="text-xs text-white/60 hidden sm:inline"></span>
       <button id="logout-btn" class="btn btn-ghost hidden" style="padding:.3rem .6rem" onclick="appLogout()" title="Cerrar sesión"><i class="fas fa-right-from-bracket"></i></button>
       <div class="hidden lg:flex items-center gap-2 text-xs text-white/40" id="clock"></div>
@@ -136,10 +157,10 @@ tr.low td{background:rgba(239,68,68,.08)}
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <h1 class="logo-font text-2xl font-bold">Caja <span class="text-white/30 text-base font-normal">· Punto de venta</span></h1>
       <div class="flex gap-2 flex-wrap">
-        <button class="btn btn-ghost" onclick="toggleResumen()"><i class="fas fa-chart-simple"></i> <span id="resumen-lbl">Ver resumen del día</span></button>
-        <button class="btn btn-ghost" onclick="openFondo()"><i class="fas fa-wallet"></i> Fondo</button>
-        <button class="btn btn-red" onclick="openGastoModal()"><i class="fas fa-money-bill-wave"></i> Gasto</button>
-        <button class="btn btn-ghost" onclick="corteCaja()"><i class="fas fa-receipt"></i> Corte de caja</button>
+        <button class="btn btn-ghost" id="btn-resumen" onclick="toggleResumen()"><i class="fas fa-chart-simple"></i> <span id="resumen-lbl">Ver resumen del día</span></button>
+        <button class="btn btn-ghost" id="btn-fondo" onclick="openFondo()"><i class="fas fa-wallet"></i> Fondo</button>
+        <button class="btn btn-red" id="btn-gasto" onclick="openGastoModal()"><i class="fas fa-money-bill-wave"></i> Gasto</button>
+        <button class="btn btn-ghost" id="btn-corte" onclick="corteCaja()"><i class="fas fa-receipt"></i> Corte de caja</button>
       </div>
     </div>
 
@@ -187,11 +208,28 @@ tr.low td{background:rgba(239,68,68,.08)}
           </div>
         </div>
         <div id="pos-ticket" class="flex-1 overflow-y-auto p-3 space-y-1" style="min-height:80px"></div>
+
+        <!-- Servicio a domicilio (precio editable: cambia según la ubicación) -->
+        <div class="px-3 py-2 border-t border-white/10">
+          <label class="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input type="checkbox" id="pos-dom" onchange="posToggleDomicilio(this.checked)">
+            <i class="fas fa-motorcycle gold"></i> A domicilio
+          </label>
+          <div id="pos-dom-wrap" class="hidden mt-2 space-y-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs text-white/50">Envío $</span>
+              <input id="pos-dom-price" class="inp" type="number" step="any" min="0" placeholder="0" style="width:85px;padding:.3rem .5rem" oninput="posSetDomicilio(this.value)">
+              <div class="flex gap-1 flex-wrap" id="pos-dom-quick"></div>
+            </div>
+            <input id="pos-dom-addr" class="inp" placeholder="Dirección / referencia (opcional)" style="padding:.35rem .5rem;font-size:.78rem">
+          </div>
+        </div>
+
         <div class="p-3 border-t border-white/10">
           <div class="flex justify-between items-baseline mb-3"><span class="text-white/60">Total</span><span id="pos-total" class="gold font-bold text-3xl">$0</span></div>
           <div class="grid grid-cols-2 gap-2">
-            <button class="btn btn-ghost" onclick="posSave()" title="Guardar para cobrar después"><i class="fas fa-floppy-disk"></i> Guardar</button>
-            <button class="btn btn-green" onclick="posCharge()" title="Cobrar e imprimir ticket"><i class="fas fa-cash-register"></i> Cobrar</button>
+            <button class="btn btn-ghost" id="pos-btn-save" onclick="posSave()" title="Guardar para cobrar después"><i class="fas fa-floppy-disk"></i> Guardar</button>
+            <button class="btn btn-green" id="pos-btn-charge" onclick="posCharge()" title="Cobrar e imprimir ticket"><i class="fas fa-cash-register"></i> Cobrar</button>
           </div>
         </div>
       </div>
@@ -214,7 +252,7 @@ tr.low td{background:rgba(239,68,68,.08)}
         <table class="w-full text-sm">
           <thead><tr class="text-white/40 text-xs uppercase tracking-wider border-b border-white/10">
             <th class="text-left p-2">Hora</th><th class="text-left p-2">Ticket</th><th class="text-left p-2">Cliente</th>
-            <th class="text-left p-2">Pago</th><th class="text-right p-2">Total</th><th class="text-center p-2">Acciones</th>
+            <th class="text-left p-2">Pago</th><th class="text-right p-2 col-total">Total</th><th class="text-center p-2">Acciones</th>
           </tr></thead>
           <tbody id="ventas-hoy-body"></tbody>
         </table>
@@ -308,6 +346,7 @@ tr.low td{background:rgba(239,68,68,.08)}
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Personas</p><p class="stat-num text-blue-300" id="rep-personas">0</p><p class="text-white/30 text-xs">atendidas</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Costo productos (COGS)</p><p class="stat-num text-orange-400" id="rep-cogs">$0</p></div>
       <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Gastos</p><p class="stat-num text-red-400" id="rep-gastos">$0</p></div>
+      <div class="card p-4"><p class="text-white/40 text-xs uppercase tracking-wider">Devoluciones</p><p class="stat-num text-red-300" id="rep-devol">$0</p><p class="text-white/30 text-xs" id="rep-ndevol">0 canceladas</p></div>
       <div class="card p-4 border-2" style="border-color:rgba(242,101,34,.4)"><p class="text-white/40 text-xs uppercase tracking-wider">Ganancia neta</p><p class="stat-num" id="rep-ganancia">$0</p><p class="text-white/30 text-xs" id="rep-margen">Margen 0%</p></div>
     </div>
 
@@ -399,15 +438,41 @@ tr.low td{background:rgba(239,68,68,.08)}
   <!-- ===================== CONFIG ===================== -->
   <section id="tab-config" class="hidden">
     <h1 class="logo-font text-2xl font-bold mb-1">Configuración</h1>
-    <p class="text-white/40 text-sm mb-5">Usuarios del sistema. Los empleados solo ven Caja e Inventario; no pueden editar/eliminar insumos ni ver Costos/Reportes/Clientes/Config.</p>
-    <div class="grid md:grid-cols-2 gap-5">
+    <p class="text-white/40 text-sm mb-5">Usuarios, roles y permisos. Tú (dueño) siempre ves todo; a cada empleado le marcas qué secciones y qué acciones puede usar.</p>
+    <div class="grid lg:grid-cols-2 gap-5">
       <div class="card p-5">
-        <h3 class="font-semibold mb-3"><i class="fas fa-user-plus gold"></i> Nuevo usuario</h3>
+        <h3 class="font-semibold mb-3" id="cfg-form-title"><i class="fas fa-user-plus gold"></i> Nuevo usuario</h3>
         <div class="space-y-3">
-          <div><label class="text-xs text-white/50">Nombre</label><input class="inp mt-1" id="cfg-name" placeholder="Ej: Juan Pérez"></div>
-          <div><label class="text-xs text-white/50">Usuario (para entrar)</label><input class="inp mt-1" id="cfg-user" placeholder="Ej: juan"></div>
-          <div><label class="text-xs text-white/50">Contraseña</label><input class="inp mt-1" id="cfg-pass"></div>
-          <button class="btn btn-gold w-full" onclick="saveUser()"><i class="fas fa-plus"></i> Crear usuario</button>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div><label class="text-xs text-white/50">Nombre</label><input class="inp mt-1" id="cfg-name" placeholder="Ej: Juan Pérez"></div>
+            <div><label class="text-xs text-white/50">Usuario (para entrar)</label><input class="inp mt-1" id="cfg-user" placeholder="Ej: juan"></div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div><label class="text-xs text-white/50">Contraseña</label><input class="inp mt-1" id="cfg-pass" placeholder="••••••"></div>
+            <div><label class="text-xs text-white/50">Rol</label>
+              <select class="inp mt-1" id="cfg-role" onchange="applyRolePreset()">
+                <option value="cajero">Cajero (solo cobrar e imprimir)</option>
+                <option value="mesero">Mesero / capturista (toma órdenes, no cobra)</option>
+                <option value="encargado">Encargado (caja + inventario + reportes)</option>
+                <option value="personalizado">Personalizado</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="rounded-lg p-3" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)">
+            <p class="text-xs text-white/50 mb-2"><i class="fas fa-eye"></i> Secciones que puede ver</p>
+            <div id="cfg-sections" class="grid grid-cols-2 gap-x-3 gap-y-1"></div>
+          </div>
+
+          <div class="rounded-lg p-3" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)">
+            <p class="text-xs text-white/50 mb-2"><i class="fas fa-key"></i> Qué puede hacer en Caja</p>
+            <div id="cfg-perms" class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1"></div>
+          </div>
+
+          <div class="flex gap-2">
+            <button class="btn btn-gold flex-1" onclick="saveUser()"><i class="fas fa-floppy-disk"></i> <span id="cfg-save-lbl">Crear usuario</span></button>
+            <button class="btn btn-ghost hidden" id="cfg-cancel" onclick="resetUserForm()">Cancelar</button>
+          </div>
         </div>
       </div>
       <div class="card p-5">
@@ -851,7 +916,7 @@ const SECTION_TITLES={hamburguesas:"Hamburguesas",promos:"Promos",papas:"Papas",
 
 /* ============ Datos en tiempo real (Firebase) ============ */
 // Cachés locales que se llenan con los listeners de Firebase (ver setupListeners abajo).
-let ordersCache={}, invCache={}, costsCache={}, expCache={}, recipesCache={};
+let ordersCache={}, invCache={}, costsCache={}, expCache={}, recipesCache={}, ticketsSalesCache={};
 let cashFloatCache=0, fondoCounts={}, cortesCache={}, clientsCache={}, discountsCache={}, fondoByDate={};
 let invView='insumos';
 function getOrders(){return Object.values(ordersCache).filter(Boolean);}
@@ -905,20 +970,134 @@ function fmtTime(){return new Intl.DateTimeFormat('es-MX',{timeZone:TZ,hour:'2-d
 /* ============ Toast ============ */
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
 
-/* ============ Usuarios, sesión y roles ============ */
-const OWNER={user:'aldo',pass:'pekesaldo1'};
+/* ============ Contraseñas: se guardan cifradas (SHA-256), nunca en texto ============ */
+function sha256(msg){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const bytes=[];
+  for(const ch of String(msg)){
+    let c=ch.codePointAt(0);
+    if(c<0x80)bytes.push(c);
+    else if(c<0x800)bytes.push(0xc0|c>>6,0x80|c&63);
+    else if(c<0x10000)bytes.push(0xe0|c>>12,0x80|(c>>6&63),0x80|c&63);
+    else bytes.push(0xf0|c>>18,0x80|(c>>12&63),0x80|(c>>6&63),0x80|c&63);
+  }
+  const len=bytes.length*8;
+  bytes.push(0x80);
+  while(bytes.length%64!==56)bytes.push(0);
+  for(let i=7;i>=0;i--)bytes.push(Math.floor(len/Math.pow(2,i*8))&0xff);
+  const rr=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let i=0;i<bytes.length;i+=64){
+    const w=new Array(64);
+    for(let j=0;j<16;j++)w[j]=(bytes[i+j*4]<<24)|(bytes[i+j*4+1]<<16)|(bytes[i+j*4+2]<<8)|bytes[i+j*4+3];
+    for(let j=16;j<64;j++){
+      const s0=rr(w[j-15],7)^rr(w[j-15],18)^(w[j-15]>>>3);
+      const s1=rr(w[j-2],17)^rr(w[j-2],19)^(w[j-2]>>>10);
+      w[j]=(w[j-16]+s0+w[j-7]+s1)|0;
+    }
+    let a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for(let j=0;j<64;j++){
+      const S1=rr(e,6)^rr(e,11)^rr(e,25), ch=(e&f)^(~e&g);
+      const t1=(h+S1+ch+K[j]+w[j])|0;
+      const S0=rr(a,2)^rr(a,13)^rr(a,22), maj=(a&b)^(a&c)^(b&c);
+      const t2=(S0+maj)|0;
+      h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;
+    }
+    H=[(H[0]+a)|0,(H[1]+b)|0,(H[2]+c)|0,(H[3]+d)|0,(H[4]+e)|0,(H[5]+f)|0,(H[6]+g)|0,(H[7]+h)|0];
+  }
+  return H.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');
+}
+const pkHash=(user,pass)=>sha256('pekes.v1|'+norm(user)+'|'+String(pass==null?'':pass));
+
+/* ============ Usuarios, sesión, roles y permisos ============ */
+// La contraseña del dueño ya no está escrita aquí: solo su huella cifrada.
+const OWNER={user:'aldo',hash:'0f773ff7bcd847143c1600461960dde1e39c426a808256f17e90044fbd56988d'};
+const okOwnerPass=p=>pkHash(OWNER.user,p)===OWNER.hash;
 const OWNER_TABS=['costos','reportes','clientes','config'];
+
+// Secciones que el dueño puede marcar para cada empleado.
+const SECTIONS=[
+  {key:'caja',      label:'Caja (punto de venta)'},
+  {key:'inventario',label:'Inventario'},
+  {key:'costos',    label:'Costos',    hint:'ve cuánto cuesta producir cada platillo'},
+  {key:'reportes',  label:'Reportes',  hint:'ventas, ganancias y gastos'},
+  {key:'clientes',  label:'Clientes'},
+  {key:'config',    label:'Configuración', hint:'⚠ podría cambiar precios, menú y usuarios'}
+];
+// Acciones dentro de Caja.
+const PERM_LIST=[
+  {key:'cobrar',   label:'Cobrar pedidos',            short:'cobrar'},
+  {key:'imprimir', label:'Imprimir / reimprimir tickets', short:'imprimir'},
+  {key:'totales',  label:'Ver resumen y totales del día', short:'ver totales', hint:'cobrado del día, efectivo en cajón, suma de ventas'},
+  {key:'descuento',label:'Aplicar descuentos',        short:'descuentos'},
+  {key:'cancelar', label:'Eliminar pedidos guardados',short:'eliminar pedidos'},
+  {key:'devolver', label:'Cancelar ventas ya cobradas',short:'devoluciones', hint:'devuelve el dinero y regresa el inventario'},
+  {key:'gastos',   label:'Registrar gastos',          short:'gastos'},
+  {key:'corte',    label:'Hacer corte de caja y fondo', short:'corte/fondo'}
+];
+// Roles listos: el dueño elige uno y las casillas se marcan solas.
+const ROLE_PRESETS={
+  cajero:{
+    tabs:{caja:true},
+    perms:{cobrar:true,imprimir:true,totales:false,descuento:false,cancelar:false,devolver:false,gastos:false,corte:false}
+  },
+  mesero:{
+    tabs:{caja:true},
+    perms:{cobrar:false,imprimir:true,totales:false,descuento:false,cancelar:false,devolver:false,gastos:false,corte:false}
+  },
+  encargado:{
+    tabs:{caja:true,inventario:true,clientes:true,reportes:true},
+    perms:{cobrar:true,imprimir:true,totales:true,descuento:true,cancelar:true,devolver:true,gastos:true,corte:true}
+  }
+};
 let usersCache={}, currentUser=null;
 try{currentUser=JSON.parse(sessionStorage.getItem('shellsUser')||'null');}catch(e){}
 function isOwner(){return !!currentUser&&currentUser.role==='owner';}
 function userLabel(){return currentUser?(currentUser.name||currentUser.user):'';}
+// Usuarios viejos (sin permisos guardados) entran como cajero.
+function effectiveTabs(rec){
+  if(rec&&rec.tabs&&typeof rec.tabs==='object')return rec.tabs;
+  const pre=ROLE_PRESETS[rec&&rec.role]||ROLE_PRESETS.cajero;
+  return pre.tabs;
+}
+function effectivePerms(rec){
+  if(rec&&rec.perms&&typeof rec.perms==='object')return rec.perms;
+  const pre=ROLE_PRESETS[rec&&rec.role]||ROLE_PRESETS.cajero;
+  return pre.perms;
+}
+// ¿El usuario de la sesión puede hacer esto? El dueño siempre puede.
+function can(key){ if(isOwner())return true; return !!(currentUser&&currentUser.perms&&currentUser.perms[key]); }
+function canSee(tab){ if(isOwner())return true; return !!(currentUser&&currentUser.tabs&&currentUser.tabs[tab]); }
+function firstTab(){ const t=SECTIONS.map(s=>s.key).find(k=>canSee(k)); return t||'caja'; }
 
 window.doAppLogin=function(){
   const u=norm(document.getElementById('app-user').value);
   const p=document.getElementById('app-pass').value;
   let user=null;
-  if(u===OWNER.user&&p===OWNER.pass) user={user:'aldo',name:'aldo',role:'owner'};
-  else{const rec=usersCache[u]; if(rec&&String(rec.pass)===p) user={user:rec.user,name:rec.name||rec.user,role:'empleado'};}
+  if(u===OWNER.user&&okOwnerPass(p)) user={user:'aldo',name:'aldo',role:'owner'};
+  else{
+    const rec=usersCache[u];
+    // Acepta la contraseña cifrada y, por única vez, la vieja en texto plano:
+    // al entrar se guarda cifrada y se borra la de texto.
+    const okHash=rec&&rec.hash&&rec.hash===pkHash(u,p);
+    const okViejo=rec&&!rec.hash&&rec.pass!=null&&String(rec.pass)===p;
+    if(okHash||okViejo){
+      user={user:rec.user,name:rec.name||rec.user,role:rec.role||'cajero',
+            tabs:effectiveTabs(rec),perms:effectivePerms(rec)};
+      if(okViejo){
+        db.ref('users/'+rec.user).update({hash:pkHash(rec.user,p),pass:null})
+          .then(()=>console.log('Contraseña de '+rec.user+' protegida'))
+          .catch(e=>console.warn('migración contraseña',e));
+      }
+    }
+  }
   if(!user){document.getElementById('app-login-err').classList.remove('hidden');return;}
   currentUser=user;try{sessionStorage.setItem('shellsUser',JSON.stringify(user));}catch(e){}
   document.getElementById('app-login-err').classList.add('hidden');
@@ -930,12 +1109,28 @@ function applySession(){
   const logged=!!currentUser;
   document.getElementById('loginScreen').classList.toggle('hidden',logged);
   document.querySelectorAll('#tabs .tab-btn').forEach(b=>{
-    const t=b.dataset.tab;
-    b.classList.toggle('hidden', !(logged&&(isOwner()||!OWNER_TABS.includes(t))));
+    b.classList.toggle('hidden', !(logged&&canSee(b.dataset.tab)));
   });
-  document.getElementById('user-chip').textContent = logged? (userLabel()+(isOwner()?' · Dueño':'')) : '';
+  const rol=isOwner()?' · Dueño':(currentUser&&currentUser.role?' · '+({cajero:'Cajero',mesero:'Mesero',encargado:'Encargado'}[currentUser.role]||'Empleado'):'');
+  document.getElementById('user-chip').textContent = logged? (userLabel()+rol) : '';
   const lo=document.getElementById('logout-btn'); if(lo)lo.classList.toggle('hidden',!logged);
-  if(logged){ if(!isOwner()&&OWNER_TABS.includes(activeTab))activeTab='caja'; switchTab(activeTab||'caja'); }
+  applyPermsUI();
+  if(logged){ if(!canSee(activeTab))activeTab=firstTab(); switchTab(activeTab||firstTab()); }
+}
+// Muestra u oculta botones según lo que puede hacer el usuario de la sesión.
+function applyPermsUI(){
+  const show=(id,ok)=>{const el=document.getElementById(id);if(el)el.classList.toggle('hidden',!ok);};
+  show('btn-resumen',can('totales'));
+  show('btn-fondo',can('corte'));
+  show('btn-gasto',can('gastos'));
+  show('btn-corte',can('corte'));
+  show('pos-btn-charge',can('cobrar'));
+  const sv=document.getElementById('pos-btn-save');
+  if(sv)sv.parentElement.className=can('cobrar')?'grid grid-cols-2 gap-2':'grid grid-cols-1 gap-2';
+  if(!can('totales')){
+    const st=document.getElementById('caja-stats'); if(st)st.classList.add('hidden');
+    const lb=document.getElementById('resumen-lbl'); if(lb)lb.textContent='Ver resumen del día';
+  }
 }
 // Autorización que SIEMPRE pide la contraseña del dueño (editar/eliminar insumos).
 let authAction=null;
@@ -950,7 +1145,7 @@ window.cancelLogin=function(){authAction=null;closeModal('loginModal');};
 window.doLogin=function(){
   const u=norm(document.getElementById('login-user').value);
   const p=document.getElementById('login-pass').value;
-  if(u===OWNER.user&&p===OWNER.pass){
+  if(u===OWNER.user&&okOwnerPass(p)){
     document.getElementById('login-err').classList.add('hidden');
     document.getElementById('login-user').value='';document.getElementById('login-pass').value='';
     closeModal('loginModal');
@@ -959,26 +1154,115 @@ window.doLogin=function(){
 };
 window.logoutOwner=function(){switchTab('caja');};
 
-/* ============ Config: alta de usuarios ============ */
+/* ============ Config: usuarios, roles y permisos ============ */
+let cfgEditUser=null;   // usuario que se está editando (null = alta nueva)
+
 window.saveUser=function(){
   const name=document.getElementById('cfg-name').value.trim();
   const user=norm(document.getElementById('cfg-user').value);
   const pass=document.getElementById('cfg-pass').value;
-  if(!name||!user||!pass){showToast('Completa nombre, usuario y contraseña');return;}
-  if(user===OWNER.user){showToast('Ese usuario está reservado');return;}
-  db.ref('users/'+user).set({user,name,pass,role:'empleado'});
-  document.getElementById('cfg-name').value='';document.getElementById('cfg-user').value='';document.getElementById('cfg-pass').value='';
-  showToast('Usuario creado');
+  const role=document.getElementById('cfg-role').value;
+  if(!name||!user){showToast('Completa nombre y usuario');return;}
+  if(user===OWNER.user){showToast('Ese usuario está reservado para el dueño');return;}
+  if(!cfgEditUser&&!pass){showToast('Pon una contraseña');return;}
+  if(!cfgEditUser&&usersCache[user]){showToast('Ese usuario ya existe');return;}
+  const prev=cfgEditUser?(usersCache[cfgEditUser]||{}):{};
+  const tabs={},perms={};
+  SECTIONS.forEach(s=>{const el=document.getElementById('sec-'+s.key);tabs[s.key]=!!(el&&el.checked);});
+  PERM_LIST.forEach(p=>{const el=document.getElementById('perm-'+p.key);perms[p.key]=!!(el&&el.checked);});
+  // La huella depende del nombre de usuario: si cambia, hay que volver a escribir la contraseña.
+  if(cfgEditUser&&cfgEditUser!==user&&!pass){
+    showToast('Cambiaste el usuario: escribe también la contraseña');return;
+  }
+  // Nunca se guarda la contraseña en texto: solo su huella cifrada.
+  const hash=pass?pkHash(user,pass):(prev.hash||(prev.pass!=null?pkHash(user,prev.pass):''));
+  if(!hash){showToast('Pon una contraseña para este usuario');return;}
+  const rec={user,name,hash,role,tabs,perms};
+  if(cfgEditUser&&cfgEditUser!==user)db.ref('users/'+cfgEditUser).remove();  // cambió de usuario
+  db.ref('users/'+user).set(rec)
+    .then(()=>showToast(cfgEditUser?'Usuario actualizado ✓':'Usuario creado ✓'))
+    .catch(e=>{console.error(e);showToast('No se pudo guardar el usuario');});
+  resetUserForm();
 };
-window.delUser=function(u){if(!confirm('¿Eliminar este usuario?'))return;db.ref('users/'+u).remove();};
+window.delUser=function(u){if(!confirm('¿Eliminar este usuario?'))return;db.ref('users/'+u).remove();if(cfgEditUser===u)resetUserForm();};
+window.editUser=function(u){
+  const rec=usersCache[u]; if(!rec)return;
+  cfgEditUser=u;
+  document.getElementById('cfg-name').value=rec.name||'';
+  document.getElementById('cfg-user').value=rec.user||'';
+  document.getElementById('cfg-pass').value='';
+  document.getElementById('cfg-pass').placeholder='(dejar vacío para no cambiarla)';
+  document.getElementById('cfg-role').value=ROLE_PRESETS[rec.role]?rec.role:'personalizado';
+  renderPermBoxes(effectiveTabs(rec),effectivePerms(rec));
+  document.getElementById('cfg-form-title').innerHTML='<i class="fas fa-user-pen gold"></i> Editar usuario';
+  document.getElementById('cfg-save-lbl').textContent='Guardar cambios';
+  document.getElementById('cfg-cancel').classList.remove('hidden');
+  document.getElementById('cfg-name').scrollIntoView({block:'center',behavior:'smooth'});
+};
+window.resetUserForm=function(){
+  cfgEditUser=null;
+  ['cfg-name','cfg-user','cfg-pass'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  const p=document.getElementById('cfg-pass'); if(p)p.placeholder='••••••';
+  const r=document.getElementById('cfg-role'); if(r)r.value='cajero';
+  applyRolePreset();
+  document.getElementById('cfg-form-title').innerHTML='<i class="fas fa-user-plus gold"></i> Nuevo usuario';
+  document.getElementById('cfg-save-lbl').textContent='Crear usuario';
+  document.getElementById('cfg-cancel').classList.add('hidden');
+};
+window.applyRolePreset=function(){
+  const role=document.getElementById('cfg-role').value;
+  const pre=ROLE_PRESETS[role];
+  if(!pre)return;                                   // "personalizado": deja lo que ya esté marcado
+  renderPermBoxes(pre.tabs,pre.perms);
+};
+window.permChanged=function(){
+  // Si el dueño cambia una casilla a mano, el rol pasa a "personalizado".
+  const sel=document.getElementById('cfg-role');
+  if(sel&&sel.value!=='personalizado'){
+    const pre=ROLE_PRESETS[sel.value];
+    const igual=SECTIONS.every(s=>document.getElementById('sec-'+s.key).checked===!!pre.tabs[s.key])
+             && PERM_LIST.every(p=>document.getElementById('perm-'+p.key).checked===!!pre.perms[p.key]);
+    if(!igual)sel.value='personalizado';
+  }
+};
+function renderPermBoxes(tabs,perms){
+  const box=(id,label,on,hint)=>`<label class="flex items-start gap-2 text-sm text-white/75 py-0.5 cursor-pointer">
+    <input type="checkbox" id="${id}" ${on?'checked':''} onchange="permChanged()" class="mt-1">
+    <span>${label}${hint?`<span class="block text-[11px] text-white/35 leading-tight">${hint}</span>`:''}</span></label>`;
+  const s=document.getElementById('cfg-sections'), p=document.getElementById('cfg-perms');
+  if(s)s.innerHTML=SECTIONS.map(x=>box('sec-'+x.key,x.label,tabs[x.key],x.hint)).join('');
+  if(p)p.innerHTML=PERM_LIST.map(x=>box('perm-'+x.key,x.label,perms[x.key],x.hint)).join('');
+}
+function roleTag(role){
+  const c={cajero:'#60a5fa',mesero:'#a78bfa',encargado:'#34d399',personalizado:'#fbbf24'}[role]||'#9ca3af';
+  const n={cajero:'Cajero',mesero:'Mesero',encargado:'Encargado',personalizado:'Personalizado'}[role]||'Empleado';
+  return `<span class="tag" style="background:${c}22;color:${c}">${n}</span>`;
+}
 function renderConfig(){
   const list=document.getElementById('cfg-list');if(!list)return;
+  if(!document.getElementById('sec-caja'))resetUserForm();      // pinta las casillas la 1ª vez
   const us=Object.values(usersCache).filter(Boolean);
-  list.innerHTML = `<div class="flex items-center justify-between py-2 border-b border-white/10"><div><p class="text-sm font-medium">aldo <span class="tag" style="background:rgba(242,101,34,.15);color:#F26522">Dueño</span></p><p class="text-xs text-white/40">usuario: aldo</p></div></div>` +
-   (us.length?us.map(u=>`<div class="flex items-center justify-between py-2 border-b border-white/5">
-      <div><p class="text-sm font-medium">${u.name||u.user}</p><p class="text-xs text-white/40">usuario: ${u.user}</p></div>
-      <button class="btn btn-ghost" style="padding:.3rem .55rem" onclick="delUser('${ea(u.user)}')" title="Eliminar"><i class="fas fa-trash"></i></button>
-    </div>`).join(''):'<p class="text-white/30 text-sm py-3 text-center">Sin empleados aún.</p>');
+  list.innerHTML = `<div class="flex items-center justify-between py-2 border-b border-white/10">
+      <div><p class="text-sm font-medium">aldo <span class="tag" style="background:rgba(242,101,34,.15);color:#F26522">Dueño</span></p>
+      <p class="text-xs text-white/40">usuario: aldo · acceso total</p></div></div>` +
+   (us.length?us.map(u=>{
+     const t=effectiveTabs(u), pm=effectivePerms(u);
+     const secs=SECTIONS.filter(s=>t[s.key]).map(s=>s.label).join(', ')||'ninguna';
+     const acciones=PERM_LIST.filter(p=>pm[p.key]).map(p=>p.short).join(', ')||'ninguna';
+     const sinCifrar=!u.hash&&u.pass!=null;
+     return `<div class="flex items-start justify-between gap-2 py-2 border-b border-white/5">
+      <div class="min-w-0">
+        <p class="text-sm font-medium">${esc(u.name||u.user)} ${roleTag(ROLE_PRESETS[u.role]?u.role:(u.role||'personalizado'))}</p>
+        <p class="text-xs text-white/40">usuario: ${esc(u.user)}</p>
+        ${sinCifrar?'<p class="text-[11px] text-yellow-300/80"><i class="fas fa-triangle-exclamation"></i> contraseña sin proteger · se cifra sola en cuanto entre una vez</p>':''}
+        <p class="text-[11px] text-white/35 mt-0.5"><i class="fas fa-eye"></i> ${esc(secs)}</p>
+        <p class="text-[11px] text-white/35"><i class="fas fa-key"></i> ${esc(acciones)}</p>
+      </div>
+      <div class="flex gap-1 flex-shrink-0">
+        <button class="btn btn-ghost" style="padding:.3rem .55rem" onclick="editUser('${ea(u.user)}')" title="Editar permisos"><i class="fas fa-pen"></i></button>
+        <button class="btn btn-ghost" style="padding:.3rem .55rem" onclick="delUser('${ea(u.user)}')" title="Eliminar"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`;}).join(''):'<p class="text-white/30 text-sm py-3 text-center">Sin empleados aún.</p>');
   renderMenuEditor();
   renderDiscounts();
   if(typeof renderTicketEditor==='function')renderTicketEditor();
@@ -1109,7 +1393,7 @@ window.restoreMenu=function(){
 let activeTab='caja';
 document.querySelectorAll('#tabs .tab-btn').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 function switchTab(t){
-  if(OWNER_TABS.includes(t)&&!isOwner()){showToast('Solo el dueño puede entrar aquí');return;}
+  if(!canSee(t)){showToast('No tienes acceso a esta sección');return;}
   activeTab=t;
   document.querySelectorAll('#tabs .tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   ['caja','inventario','costos','reportes','clientes','config'].forEach(s=>document.getElementById('tab-'+s).classList.toggle('hidden',s!==t));
@@ -1136,7 +1420,43 @@ function elapsed(iso){
 // Un pedido "guardado" es el que ya se registró pero todavía no se cobra.
 const PENDING=['guardado','nuevo','preparando','listo'];
 function unpaid(){return getOrders().filter(o=>o&&PENDING.includes(o.status)).sort((a,b)=>a.id-b.id);}
-function paidToday(){return getOrders().filter(o=>o&&o.status==='cobrado'&&o.paidAt&&inRange(o.paidAt,'today')).sort((a,b)=>(b.paidAt||'')<(a.paidAt||'')?-1:1);}
+/* ---- Ventas reales = pedidos cobrados + ventas rescatadas de la copia del dueño ----
+   Si alguien borra un pedido cobrado, la venta NO se pierde: se reconstruye
+   desde el ticket guardado y sigue contando en caja, corte y reportes. */
+function ticketToOrder(t){
+  return {
+    id:t.id, table:t.cliente||'Mostrador', mesa:t.mesa||'', personas:+t.personas||0, phone:t.telefono||'',
+    domicilio:!!t.domicilio, direccion:t.direccion||'',
+    items:(t.items||[]).map(i=>({
+      name:i.name||'', size:i.size||'', qty:+i.qty||0, price:+i.price||0, note:i.note||'',
+      extras:(i.extras||[]).map(e=>({name:e.name||'',price:+e.price||0})),
+      discount:i.descuento&&i.descuento.type?{label:i.descuento.label||'',type:i.descuento.type,value:+i.descuento.value||0}:null,
+      isDelivery:i.name===DELIVERY_NAME
+    })),
+    total:+t.total||0, status:'cobrado', paidAt:t.ts, paymentMethod:t.metodo||'',
+    paidBy:t.cajero||'', paidCash:+t.efectivo||0, paidChange:+t.cambio||0,
+    createdAt:t.ts, createdBy:t.capturo||'', notes:'', recuperado:true
+  };
+}
+function soldOrders(){
+  const out=getOrders().filter(o=>o&&o.status==='cobrado');
+  const vistos=new Set(out.map(o=>String(o.id)));
+  Object.keys(ticketsSalesCache||{}).forEach(k=>{
+    if(vistos.has(String(k)))return;
+    const t=ticketsSalesCache[k];
+    if(!t||t.devuelto)return;                       // devoluciones no cuentan
+    out.push(ticketToOrder(t));
+  });
+  return out;
+}
+// Busca un pedido aunque ya no exista: cae a la copia del dueño.
+function orderById(id){
+  const o=ordersCache[id];
+  if(o)return o;
+  const t=ticketsSalesCache&&ticketsSalesCache[id];
+  return t?ticketToOrder(t):null;
+}
+function paidToday(){return soldOrders().filter(o=>o.paidAt&&inRange(o.paidAt,'today')).sort((a,b)=>(b.paidAt||'')<(a.paidAt||'')?-1:1);}
 
 window.toggleResumen=function(){
   const box=document.getElementById('caja-stats'); if(!box)return;
@@ -1160,15 +1480,16 @@ function renderCaja(){
         <span class="tag tag-listo">guardado</span>
       </div>
       <p class="text-white/40 text-xs mb-2">#${String(o.id).slice(-4)} · ${arts} art. · ${elapsed(o.createdAt)}${o.createdBy?' · '+esc(o.createdBy):''}${o.phone?` · <i class="fas fa-phone"></i> ${esc(o.phone)}`:''}</p>
+      ${o.domicilio?`<p class="text-xs mb-2" style="color:#F26522"><i class="fas fa-motorcycle"></i> A domicilio${o.direccion?' · '+esc(o.direccion):''}</p>`:''}
       <div class="text-xs text-white/60 mb-3">${esc((o.items||[]).map(i=>i.qty+'× '+itemLabel(i)+(i.note?' ('+i.note+')':'')+((i.extras||[]).length?' +'+i.extras.map(e=>e.name).join(', +'):'')+(i.discount&&i.discount.type?' ['+discLabel(i.discount)+']':'')).join(', '))}</div>
       <div class="flex items-center justify-between mb-2">
         <span class="gold font-bold text-xl">${money(orderTotal(o.items))}</span>
-        <button class="btn btn-green" onclick="openPay(${o.id})"><i class="fas fa-cash-register"></i> Cobrar</button>
+        ${can('cobrar')?`<button class="btn btn-green" onclick="openPay(${o.id})"><i class="fas fa-cash-register"></i> Cobrar</button>`:''}
       </div>
       <div class="flex gap-2">
         <button class="btn btn-ghost flex-1" onclick="editOrder(${o.id})" title="Editar / agregar platillos"><i class="fas fa-pen"></i> Editar</button>
-        <button class="btn btn-ghost" onclick="printTicket(${o.id})" title="Imprimir"><i class="fas fa-print"></i></button>
-        <button class="btn btn-ghost" onclick="cancelOrder(${o.id})" title="Eliminar pedido"><i class="fas fa-xmark text-red-400"></i></button>
+        ${can('imprimir')?`<button class="btn btn-ghost" onclick="printTicket(${o.id})" title="Imprimir"><i class="fas fa-print"></i></button>`:''}
+        ${can('cancelar')?`<button class="btn btn-ghost" onclick="cancelOrder(${o.id})" title="Eliminar pedido"><i class="fas fa-xmark text-red-400"></i></button>`:''}
       </div>
     </div>`;}).join('');
 
@@ -1176,21 +1497,34 @@ function renderCaja(){
   const cobrados=paidToday();
   const tot=cobrados.reduce((s,o)=>s+(+o.total||0),0);
   const body=document.getElementById('ventas-hoy-body');
+  const verTotales=can('totales');
+  // Las ventas canceladas se siguen viendo (tachadas), pero no suman.
+  const devueltas=getOrders().filter(o=>o&&o.status==='devuelto'&&o.paidAt&&inRange(o.paidAt,'today'));
+  const filas=cobrados.concat(devueltas).sort((a,b)=>(b.paidAt||'')<(a.paidAt||'')?-1:1);
   if(body){
-    document.getElementById('ventas-hoy-empty').classList.toggle('hidden',cobrados.length>0);
-    document.getElementById('ventas-hoy-tot').textContent=cobrados.length+(cobrados.length===1?' venta · ':' ventas · ')+money(tot);
-    body.innerHTML=cobrados.map(o=>`<tr class="border-b border-white/5 hover:bg-white/5">
+    document.getElementById('ventas-hoy-empty').classList.toggle('hidden',filas.length>0);
+    // Sin permiso de totales: se ve la lista de tickets, pero NO la suma del día.
+    document.getElementById('ventas-hoy-tot').textContent=verTotales
+      ? cobrados.length+(cobrados.length===1?' venta · ':' ventas · ')+money(tot)
+      : cobrados.length+(cobrados.length===1?' ticket':' tickets');
+    document.querySelectorAll('.col-total').forEach(el=>el.classList.toggle('hidden',!verTotales));
+    body.innerHTML=filas.map(o=>{
+      const dev=o.status==='devuelto';
+      return `<tr class="border-b border-white/5 hover:bg-white/5 ${dev?'opacity-60':''}">
       <td class="p-2 text-white/50">${fmtDateTime(o.paidAt).split(', ')[1]||fmtDateTime(o.paidAt)}</td>
       <td class="p-2 text-white/70">#${String(o.id).slice(-4)}</td>
-      <td class="p-2 font-medium">${esc(o.table||'Mostrador')}</td>
+      <td class="p-2 font-medium">${esc(o.table||'Mostrador')}${o.domicilio?' <i class="fas fa-motorcycle text-[10px]" style="color:#F26522" title="A domicilio"></i>':''}
+        ${dev?'<span class="tag" style="background:rgba(239,68,68,.18);color:#fca5a5">cancelada</span>':''}
+        ${o.recuperado?'<i class="fas fa-shield-halved text-[10px] text-blue-300" title="Venta rescatada de la copia del dueño"></i>':''}</td>
       <td class="p-2 text-white/60">${esc(metodoLabel(o.paymentMethod))}</td>
-      <td class="p-2 text-right gold font-semibold">${money(o.total)}</td>
+      <td class="p-2 text-right font-semibold col-total ${verTotales?'':'hidden'} ${dev?'text-white/40 line-through':'gold'}">${money(o.total)}</td>
       <td class="p-2 text-center"><div class="flex gap-1 justify-center">
         <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="openTicketDetail(${o.id})" title="Ver ticket"><i class="fas fa-eye"></i></button>
-        <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="printTicket(${o.id})" title="Reimprimir ticket"><i class="fas fa-print"></i></button>
-        <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="printOwnerCopy(${o.id})" title="Imprimir copia del dueño"><i class="fas fa-copy"></i></button>
-        <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="shareTicket(${o.id})" title="Enviar PDF"><i class="fab fa-whatsapp text-green-400"></i></button>
-      </div></td></tr>`).join('');
+        ${can('imprimir')?`<button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="printTicket(${o.id})" title="Reimprimir ticket"><i class="fas fa-print"></i></button>`:''}
+        ${can('imprimir')&&isOwner()?`<button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="printOwnerCopy(${o.id})" title="Imprimir copia del dueño"><i class="fas fa-copy"></i></button>`:''}
+        ${can('imprimir')?`<button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="shareTicket(${o.id})" title="Enviar PDF"><i class="fab fa-whatsapp text-green-400"></i></button>`:''}
+        ${can('devolver')&&!dev?`<button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="devolverVenta(${o.id})" title="Cancelar venta / devolución"><i class="fas fa-rotate-left text-red-400"></i></button>`:''}
+      </div></td></tr>`;}).join('');
   }
 
   // ---- resumen del día ----
@@ -1211,6 +1545,7 @@ function renderCaja(){
 
 /* ---- Eliminar / editar un pedido guardado ---- */
 window.cancelOrder=function(id){
+  if(!can('cancelar')){showToast('No tienes permiso para eliminar pedidos');return;}
   if(!confirm('¿Eliminar este pedido guardado? No se cobrará.'))return;
   db.ref('orders/'+id).update({status:'cancelado',canceledAt:new Date().toISOString(),canceledBy:userLabel()});
   if(posEditId===id)posCancelEdit();
@@ -1220,6 +1555,7 @@ window.setStatus=function(id,status){db.ref('orders/'+id).update({status});};
 
 /* ============ COBRO ============ */
 window.openPay=function(id){
+  if(!can('cobrar')){showToast('No tienes permiso para cobrar');return;}
   const o=ordersCache[id]; if(!o){showToast('Ese pedido ya no existe');return;}
   if(o.status==='cobrado'){showToast('Este pedido ya estaba cobrado');return;}
   const total=orderTotal(o.items)||(+o.total||0);
@@ -1311,6 +1647,7 @@ function saveOwnerTicket(o){
     const t={
       id:o.id, folio:String(o.id).slice(-4), ts:o.paidAt||new Date().toISOString(), fecha:dayStr(o.paidAt)||todayStr(),
       cliente:o.table||'Público en general', mesa:o.mesa||'', personas:+o.personas||0, telefono:o.phone||'',
+      domicilio:!!o.domicilio, direccion:o.direccion||'',
       items, subtotal:Math.round(bruto*100)/100, descuentos:Math.round(desc*100)/100, total:+o.total||orderTotal(o.items),
       metodo:o.paymentMethod||'', efectivo:+o.paidCash||0, cambio:+o.paidChange||0,
       cajero:o.paidBy||userLabel()||'—', capturo:o.createdBy||'', negocio:BIZ.name, texto:ticketPlainText(o)
@@ -1318,6 +1655,52 @@ function saveOwnerTicket(o){
     db.ref('tickets/'+o.id).set(t).catch(e=>console.error('ticket dueño',e));
   }catch(e){console.error('saveOwnerTicket',e);}
 }
+/* ============ DEVOLUCIÓN: cancelar una venta ya cobrada ============
+   Regresa el inventario, saca la venta de los totales y del reporte,
+   y deja registro de quién la canceló y por qué. */
+window.devolverVenta=function(id){
+  if(!can('devolver')){showToast('No tienes permiso para cancelar ventas cobradas');return;}
+  const o=orderById(id);
+  if(!o){showToast('Esa venta ya no existe');return;}
+  if(o.status==='devuelto'){showToast('Esa venta ya estaba cancelada');return;}
+  const tot=money(+o.total||orderTotal(o.items));
+  if(!confirm('¿Cancelar la venta #'+String(id).slice(-4)+' de '+tot+'?\n\n'
+    +'• Se devuelve el dinero al cliente (hazlo tú en el cajón).\n'
+    +'• Regresa el inventario que se había descontado.\n'
+    +'• Deja de contar en el corte y en los reportes.'))return;
+  const motivo=(prompt('Motivo de la cancelación (ej. se equivocaron de pedido):','')||'').trim();
+  const datos={status:'devuelto',devueltoAt:new Date().toISOString(),devueltoPor:userLabel()||'—',motivoDevolucion:motivo};
+  if(ordersCache[id]){
+    ordersCache[id]=Object.assign({},ordersCache[id],datos);
+    db.ref('orders/'+id).update(datos).catch(e=>{console.error(e);showToast('⚠️ No se pudo guardar la cancelación');});
+  }
+  // Marca también la copia del dueño (así no reaparece como venta rescatada).
+  db.ref('tickets/'+id).update({devuelto:true,devueltoAt:datos.devueltoAt,devueltoPor:datos.devueltoPor,motivoDevolucion:motivo})
+    .catch(e=>console.warn('ticket devuelto',e));
+  restoreInventory(o);
+  renderAll();
+  showToast('Venta cancelada · '+tot+' devueltos');
+  if(can('imprimir')&&confirm('¿Imprimir comprobante de la cancelación?'))
+    printDoc(ticketHTML(Object.assign({},o,datos),'caja',false,'DEVOLUCIÓN / CANCELACIÓN'));
+};
+/* ---- Regresa al inventario lo que se había descontado al cobrar ---- */
+function restoreInventory(order){
+  const back={};
+  (order.items||[]).forEach(it=>{
+    const recipe=recipesCache[norm(it.name)];
+    if(recipe&&Array.isArray(recipe.items)&&recipe.items.length){
+      recipe.items.forEach(ing=>{back[ing.invId]=(back[ing.invId]||0)+(+ing.qty||0)*(+it.qty||0);});
+    }else{
+      const match=getInv().find(x=>norm(x.name)===norm(it.name));
+      if(match)back[match.id]=(back[match.id]||0)+(+it.qty||0);
+    }
+  });
+  Object.keys(back).forEach(invId=>{
+    const inv=invCache[invId];
+    if(inv){const ns=Math.round(((+inv.stock||0)+back[invId])*1000)/1000;db.ref('inventory/'+invId+'/stock').set(ns);}
+  });
+}
+
 /* ---- Descuento de inventario por receta (o por nombre si no hay receta) ---- */
 function deductInventory(order){
   const deduct={};
@@ -1336,7 +1719,8 @@ function deductInventory(order){
   });
 }
 function corteCaja(){
-  const c=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt&&inRange(o.paidAt,'today'));
+  if(!can('corte')){showToast('No tienes permiso para el corte de caja');return;}
+  const c=paidToday();
   const tot=c.reduce((s,o)=>s+o.total,0);
   const efe=c.filter(o=>o.paymentMethod==='efectivo').reduce((s,o)=>s+o.total,0);
   const tar=c.filter(o=>o.paymentMethod==='tarjeta').reduce((s,o)=>s+o.total,0);
@@ -1353,6 +1737,7 @@ const DENOMS=[1000,500,200,100,50,20,10,5,2,1,0.5];
 const denomKey=d=>'d'+String(d).replace('.','_');
 const denomLabel=d=>d>=20?('Billete $'+d):('Moneda $'+(d===0.5?'0.50':d));
 window.openFondo=function(){
+  if(!can('corte')){showToast('No tienes permiso para el fondo de caja');return;}
   document.getElementById('fondo-date').value=todayStr();
   loadFondoDate();
   openModal('fondoModal');
@@ -1501,7 +1886,7 @@ async function shareTicketDoc(o){
     else showToast('PDF descargado');
   }
 }
-window.shareTicket=function(id){const o=ordersCache[id];if(!o)return;shareTicketDoc(o);};
+window.shareTicket=function(id){const o=orderById(id);if(!o){showToast('Ese ticket ya no existe');return;}shareTicketDoc(o);};
 
 /* ============================================================
    TICKET TÉRMICO DE 58 mm (configurable) + IMPRESIÓN
@@ -1510,7 +1895,7 @@ window.shareTicket=function(id){const o=ordersCache[id];if(!o)return;shareTicket
    sm ≈ 30 caracteres por línea · md ≈ 25 · lg ≈ 20 · xl ≈ 16
    ============================================================ */
 const TK_SIZES={sm:'10px',md:'12px',lg:'15px',xl:'18px'};
-const TK_LABELS={logo:'Logo',negocio:'Nombre del negocio',direccion:'Dirección',tel:'Teléfono',separador:'── Separador ──',folio:'Folio / Ticket #',fecha:'Fecha y hora',cliente:'Cliente (nombre)',mesa:'Mesa',personas:'Personas',mesero:'Capturó (quien tomó la orden)',items:'Platillos (con precios)',subtotal:'Subtotal y descuentos',total:'TOTAL',pago:'Método de pago / cambio',cajero:'Cajero',notas:'Notas del pedido',qr:'Código QR',texto:'Texto libre'};
+const TK_LABELS={logo:'Logo',negocio:'Nombre del negocio',direccion:'Dirección',tel:'Teléfono',separador:'── Separador ──',folio:'Folio / Ticket #',fecha:'Fecha y hora',cliente:'Cliente (nombre)',mesa:'Mesa',personas:'Personas',domicilio:'A domicilio (dirección)',mesero:'Capturó (quien tomó la orden)',items:'Platillos (con precios)',subtotal:'Subtotal y descuentos',total:'TOTAL',pago:'Método de pago / cambio',cajero:'Cajero',notas:'Notas del pedido',qr:'Código QR',texto:'Texto libre'};
 const TK_DEFAULT_WIDTH=48;   // mm que imprime realmente un rollo de 58 mm
 const DEFAULT_TICKETS={
   caja:{qr:null,logo:null,width:TK_DEFAULT_WIDTH,blocks:[
@@ -1524,6 +1909,7 @@ const DEFAULT_TICKETS={
     {id:'b8',type:'cliente',show:true,align:'left',size:'sm'},
     {id:'b9',type:'mesa',show:true,align:'left',size:'sm'},
     {id:'b9b',type:'personas',show:true,align:'left',size:'sm'},
+    {id:'b9c',type:'domicilio',show:true,align:'left',size:'sm',bold:true},
     {id:'b10',type:'separador',show:true},
     {id:'b11',type:'items',show:true,size:'md'},
     {id:'b12',type:'subtotal',show:true,size:'sm'},
@@ -1591,6 +1977,7 @@ function ticketBlockHTML(b,o,which){
     case 'cliente': return wrap('Cliente: '+esc(o.table||'Público en general'));
     case 'mesa': return o.mesa?wrap('Mesa: '+esc(o.mesa)):'';
     case 'personas': return o.personas?wrap('Personas: '+(+o.personas||0)):'';
+    case 'domicilio': return o.domicilio?wrap('A DOMICILIO'+(o.direccion?'<br>'+esc(o.direccion):'')+(o.phone?'<br>Tel: '+esc(o.phone):'')):'';
     case 'items': return `<div style="text-align:left">${ticketItemsHTML(o,fs)}</div>`;
     case 'subtotal': {
       const items=o.items||[];
@@ -1617,10 +2004,14 @@ function tkAlign(a){return a==='center'?'center':a==='right'?'right':'left';}
 function ticketInner(o,which){ return (getTickets(which).blocks||[]).map(b=>ticketBlockHTML(b,o,which)).join(''); }
 
 /* Hoja completa lista para la impresora térmica (nada que ajustar a mano). */
-function ticketHTML(o,which,ownerCopy){
+function ticketHTML(o,which,ownerCopy,banner){
   which=which||'caja';
   const w=tkWidthMM(), paper=tkPaperMM();
-  const head=ownerCopy?`<div style="text-align:center;font-weight:bold;font-size:12px;border:1px solid #000;padding:2px;margin-bottom:3px">COPIA DEL DUEÑO</div>`:'';
+  const titulo=banner||(ownerCopy?'COPIA DEL DUEÑO':'');
+  const head=titulo?`<div style="text-align:center;font-weight:bold;font-size:12px;border:1px solid #000;padding:2px;margin-bottom:3px">${esc(titulo)}</div>`:'';
+  const pie=banner?`<div style="text-align:center;font-size:10px;margin-top:4px;border-top:1px dashed #000;padding-top:3px">
+      Cancelada por ${esc(o.devueltoPor||userLabel()||'—')}<br>${esc(fmtDateTime(o.devueltoAt))}
+      ${o.motivoDevolucion?'<br>Motivo: '+esc(o.motivoDevolucion):''}</div>`:'';
   return `<html><head><meta charset="utf-8"><base href="${location.href}">
   <title>Ticket #${String(o.id).slice(-4)}</title><style>
     @page{size:${paper}mm auto;margin:0}
@@ -1636,7 +2027,7 @@ function ticketHTML(o,which,ownerCopy){
     .tk-items .tk-p{padding:2px 0 2px 4px;text-align:right;vertical-align:top;white-space:nowrap;font-weight:bold;width:15mm}
     .tk-total{display:flex;justify-content:space-between;gap:6px;border-top:2px solid #000;
       margin-top:4px;padding-top:4px;font-weight:bold}
-  </style></head><body>${head}${ticketInner(o,which)}<div style="height:8mm"></div></body></html>`;
+  </style></head><body>${head}${ticketInner(o,which)}${pie}<div style="height:8mm"></div></body></html>`;
 }
 
 /* Versión en texto plano (32 columnas) que se guarda como copia del dueño. */
@@ -1654,6 +2045,7 @@ function ticketPlainText(o){
   out.push(fmtDateTime(o.paidAt||o.createdAt));
   out.push('Cliente: '+(o.table||'Público en general'));
   if(o.mesa)out.push('Mesa: '+o.mesa);
+  if(o.domicilio){out.push('A DOMICILIO');if(o.direccion)out.push(String(o.direccion));if(o.phone)out.push('Tel: '+o.phone);}
   out.push('-'.repeat(W));
   (o.items||[]).forEach(i=>{
     pair((i.qty+'x '+itemLabel(i)).slice(0,W-9),money(lineTotal(i)));
@@ -1699,12 +2091,12 @@ function printDoc(html){
   return win;
 }
 window.openPrintWindow=printDoc; // compatibilidad
-window.printTicket=function(id){const o=ordersCache[id];if(!o){showToast('Ese pedido ya no existe');return;}printDoc(ticketHTML(o,'caja'));};
-window.printOwnerCopy=function(id){const o=ordersCache[id];if(!o){showToast('Ese pedido ya no existe');return;}printDoc(ticketHTML(o,'caja',true));};
+window.printTicket=function(id){if(!can('imprimir')){showToast('No tienes permiso para imprimir');return;}const o=orderById(id);if(!o){showToast('Ese pedido ya no existe');return;}printDoc(ticketHTML(o,'caja'));};
+window.printOwnerCopy=function(id){const o=orderById(id);if(!o){showToast('Ese pedido ya no existe');return;}printDoc(ticketHTML(o,'caja',true));};
 
 /* ---- Editor de tickets (Config) ---- */
 let TK_EDIT=null, TK_WHICH='caja';
-const TK_SAMPLE={id:1234,table:'Juan Pérez',mesa:'5',personas:2,paidBy:'aldo',createdBy:'manu',createdAt:new Date().toISOString(),paymentMethod:'efectivo',paidCash:250,paidChange:20,total:230,notes:'Sin cebolla, término medio',items:[{name:'Especial',size:'Doble',qty:2,price:100,note:'bien cocida',extras:[{name:'Tira de Tocino',price:12}]},{name:'Papas Gajo',qty:1,price:60}]};
+const TK_SAMPLE={id:1234,table:'Juan Pérez',mesa:'5',personas:2,domicilio:true,direccion:'Av. Cipreses 1003, casa azul',phone:'8712242373',paidBy:'aldo',createdBy:'manu',createdAt:new Date().toISOString(),paymentMethod:'efectivo',paidCash:250,paidChange:20,total:230,notes:'Sin cebolla, término medio',items:[{name:'Especial',size:'Doble',qty:2,price:100,note:'bien cocida',extras:[{name:'Tira de Tocino',price:12}]},{name:'Papas Gajo',qty:1,price:60}]};
 function renderTicketEditor(){
   const host=document.getElementById('tk-blocks'); if(!host)return;
   TK_WHICH='caja';
@@ -1797,6 +2189,7 @@ const posVal=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
 function posReset(){
   posCart=[];posSel={};posEditId=null;
   posVal('pos-name','');posVal('pos-phone','');posVal('pos-mesa','');posVal('pos-personas','');posVal('pos-search','');
+  posSetDeliveryUI(null,'');
   const t=document.getElementById('pos-title');
   if(t)t.innerHTML='<i class="fas fa-cart-shopping gold"></i> Venta nueva';
   const c=document.getElementById('pos-cancel-edit'); if(c)c.classList.add('hidden');
@@ -1808,9 +2201,12 @@ window.editOrder=function(id){
   if(o.status==='cobrado'){showToast('Ese pedido ya fue cobrado');return;}
   posCart=(o.items||[]).map(i=>({name:i.name,price:+i.price||0,size:i.size||'',qty:+i.qty||1,note:i.note||'',
     extras:(i.extras||[]).map(e=>({name:e.name,price:+e.price||0})),
+    isDelivery:!!i.isDelivery||i.name===DELIVERY_NAME,
     discount:i.discount&&i.discount.type?{label:i.discount.label||'',type:i.discount.type,value:+i.discount.value||0}:null}));
   posEditId=id; posSel={};
   posVal('pos-name',o.table||'');posVal('pos-phone',o.phone||'');posVal('pos-mesa',o.mesa||'');posVal('pos-personas',o.personas||'');
+  const dl=posDeliveryLine();
+  posSetDeliveryUI(dl?dl.price:null,o.direccion||'');
   const t=document.getElementById('pos-title');
   if(t)t.innerHTML='<i class="fas fa-pen gold"></i> Editando #'+String(id).slice(-4);
   const c=document.getElementById('pos-cancel-edit'); if(c)c.classList.remove('hidden');
@@ -1819,9 +2215,52 @@ window.editOrder=function(id){
   showToast('Pedido cargado en la caja');
 };
 window.posCancelEdit=function(){posReset();showToast('Edición cancelada');};
+
+/* ---- Servicio a domicilio (el precio varía según la ubicación) ---- */
+const DELIVERY_NAME='Envío a domicilio';
+const DELIVERY_QUICK=[20,30,40,50,60];
+function posDeliveryLine(){return posCart.find(i=>i&&i.isDelivery);}
+function lastDeliveryPrice(){try{return +localStorage.getItem('pk_envio')||0;}catch(e){return 0;}}
+window.posToggleDomicilio=function(on){
+  const wrap=document.getElementById('pos-dom-wrap');
+  const inp=document.getElementById('pos-dom-price');
+  if(on){
+    wrap.classList.remove('hidden');
+    const price=+inp.value||lastDeliveryPrice()||0;
+    inp.value=price||'';
+    const l=posDeliveryLine();
+    if(l)l.price=price; else posCart.push({name:DELIVERY_NAME,price,size:'',qty:1,note:'',extras:[],isDelivery:true});
+    document.getElementById('pos-dom-quick').innerHTML=DELIVERY_QUICK.map(v=>
+      `<button class="size-btn" style="padding:3px 8px;font-size:.72rem" onclick="posSetDomicilio(${v},true)">$${v}</button>`).join('');
+    setTimeout(()=>{inp.focus();inp.select();},50);
+  }else{
+    wrap.classList.add('hidden');
+    posCart=posCart.filter(i=>!i.isDelivery);
+    const ad=document.getElementById('pos-dom-addr'); if(ad)ad.value='';
+  }
+  renderPOS();
+};
+window.posSetDomicilio=function(v,fromBtn){
+  const price=Math.max(0,+v||0);
+  if(fromBtn)document.getElementById('pos-dom-price').value=price;
+  const l=posDeliveryLine();
+  if(l)l.price=price; else posCart.push({name:DELIVERY_NAME,price,size:'',qty:1,note:'',extras:[],isDelivery:true});
+  try{localStorage.setItem('pk_envio',String(price));}catch(e){}
+  renderPOS();
+};
+function posSetDeliveryUI(price,addr){
+  const chk=document.getElementById('pos-dom'), wrap=document.getElementById('pos-dom-wrap');
+  const on=price!=null;
+  if(chk)chk.checked=on;
+  if(wrap)wrap.classList.toggle('hidden',!on);
+  const p=document.getElementById('pos-dom-price'); if(p)p.value=on?(price||''):'';
+  const a=document.getElementById('pos-dom-addr'); if(a)a.value=addr||'';
+  if(on)document.getElementById('pos-dom-quick').innerHTML=DELIVERY_QUICK.map(v=>
+    `<button class="size-btn" style="padding:3px 8px;font-size:.72rem" onclick="posSetDomicilio(${v},true)">$${v}</button>`).join('');
+}
 window.posClear=function(){
   if(posCart.length&&!confirm('¿Vaciar la venta en curso?'))return;
-  posCart=[]; renderCajaSafe();
+  posCart=[]; posSetDeliveryUI(null,''); renderCajaSafe();
 };
 window.posSetCat=function(c){ posCat=c; const s=document.getElementById('pos-search'); if(s)s.value=''; renderPOS(); };
 window.posPickSize=function(name,price,size){ posSel[slugify(name)]={price:+price,size}; renderPOS(); };
@@ -1880,6 +2319,7 @@ window.descToggleVal=function(){
   document.getElementById('desc-val-wrap').classList.toggle('hidden',t==='2x1'||t==='3x2');
 };
 window.openDiscount=function(idx){
+  if(!can('descuento')){showToast('No tienes permiso para aplicar descuentos');return;}
   descLine=idx; const it=posCart[idx]; if(!it)return;
   document.getElementById('desc-title').textContent='Descuento · '+itemLabel(it);
   const presets=Object.values(discountsCache).filter(Boolean);
@@ -1950,7 +2390,15 @@ function renderPOS(){
   }).join(''):'<p class="text-white/30 text-sm text-center py-8">Sin resultados para "'+q+'"</p>';
   const tk=document.getElementById('pos-ticket');
   if(!posCart.length){tk.innerHTML='<p class="text-white/30 text-sm text-center py-6">Sin productos aún</p>';}
-  else tk.innerHTML=posCart.map((i,idx)=>`<div class="border-b border-white/5 py-1.5">
+  else tk.innerHTML=posCart.map((i,idx)=>{
+    // El envío a domicilio se muestra como una línea simple (su precio se edita abajo).
+    if(i.isDelivery)return `<div class="border-b border-white/5 py-1.5">
+      <div class="flex items-center justify-between gap-2 text-sm">
+        <span class="flex-1 min-w-0 truncate"><i class="fas fa-motorcycle gold"></i> ${esc(DELIVERY_NAME)}</span>
+        <span class="gold">${money(i.price)}</span>
+        <button class="text-white/40 hover:text-red-400 ml-1" onclick="posToggleDomicilio(false);document.getElementById('pos-dom').checked=false" title="Quitar envío">✕</button>
+      </div></div>`;
+    return `<div class="border-b border-white/5 py-1.5">
       <div class="flex items-center justify-between gap-2 text-sm">
         <span class="flex-1 min-w-0 truncate">${i.qty}× ${esc(itemLabel(i))}</span>
         <span class="gold">${money(lineTotal(i))}</span>
@@ -1962,9 +2410,9 @@ function renderPOS(){
       <div class="flex flex-wrap gap-1 mt-1">${getMods().map(m=>{const on=(i.note||'').split(',').map(x=>x.trim()).includes(m);return `<button class="text-[10px] px-2 py-0.5 rounded-full ${on?'bg-[#F26522] text-black font-semibold':'bg-white/10 text-white/70'}" onclick="posToggleMod(${idx},'${ea(m)}')">${m}</button>`;}).join('')}</div>
       <div class="flex gap-3 mt-1">
         <button class="text-[#F26522] text-xs hover:underline" onclick="openExtras(${idx})"><i class="fas fa-plus-circle"></i> Extras</button>
-        <button class="text-orange-300 text-xs hover:underline" onclick="openDiscount(${idx})"><i class="fas fa-percent"></i> Descuento</button>
+        ${can('descuento')?`<button class="text-orange-300 text-xs hover:underline" onclick="openDiscount(${idx})"><i class="fas fa-percent"></i> Descuento</button>`:''}
       </div>
-    </div>`).join('');
+    </div>`;}).join('');
   document.getElementById('pos-total').textContent=money(orderTotal(posCart));
   if(itemsBox)itemsBox.scrollTop=itemsTop;
   if(cartBox)cartBox.scrollTop=cartTop;
@@ -1977,9 +2425,15 @@ function renderPOS(){
 /* ---- Guardar / cobrar la venta que está en la caja ---- */
 function posCollect(){
   if(!posCart.length){showToast('Agrega platillos a la venta');return null;}
+  const dl=posDeliveryLine();
+  if(dl&&(+dl.price||0)<=0){
+    if(!confirm('El envío a domicilio está en $0. ¿Continuar sin cobrar el envío?'))
+      {const p=document.getElementById('pos-dom-price');if(p){p.focus();p.select();}return null;}
+  }
   const items=posCart.map(i=>{
     const o={name:i.name,price:+i.price||0,size:i.size||'',qty:+i.qty||1,note:i.note||'',
              extras:(i.extras||[]).map(e=>({name:e.name||'',price:+e.price||0}))};
+    if(i.isDelivery)o.isDelivery=true;
     if(i.discount&&i.discount.type)o.discount={label:i.discount.label||'',type:i.discount.type,value:+i.discount.value||0};
     return o;});
   return {
@@ -1987,6 +2441,8 @@ function posCollect(){
     phone:(document.getElementById('pos-phone').value||'').trim(),
     mesa:(document.getElementById('pos-mesa').value||'').trim(),
     personas:+document.getElementById('pos-personas').value||0,
+    domicilio:!!dl,
+    direccion:dl?((document.getElementById('pos-dom-addr').value||'').trim()):'',
     items, total:orderTotal(items)
   };
 }
@@ -1996,6 +2452,7 @@ function persistOrder(d){
   const prev=posEditId?(ordersCache[id]||{}):{};
   const ord=Object.assign({},prev,{
     id, table:d.name, phone:d.phone, mesa:d.mesa, personas:d.personas,
+    domicilio:!!d.domicilio, direccion:d.direccion||'',
     notes:prev.notes||'', items:d.items, total:d.total,
     status:'guardado',
     createdAt:prev.createdAt||new Date().toISOString(),
@@ -2014,6 +2471,7 @@ window.posSave=function(){
   showToast(editing?'Pedido actualizado ✓':'Pedido guardado · cóbralo cuando quieras');
 };
 window.posCharge=function(){
+  if(!can('cobrar')){showToast('No tienes permiso para cobrar');return;}
   const d=posCollect(); if(!d)return;
   const id=persistOrder(d);   // se guarda primero: si cancelas el cobro, la venta no se pierde
   openPay(id);
@@ -2226,7 +2684,7 @@ function updatePeriodLabel(){
 /* ---- Comparativa semana vs semana ---- */
 function renderCompare(){
   const host=document.getElementById('rep-compare'); if(!host)return;
-  const sales=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt);
+  const sales=soldOrders().filter(o=>o.paidAt);
   const dayTot={};
   sales.forEach(o=>{const d=dayStr(o.paidAt);if(d)dayTot[d]=(dayTot[d]||0)+o.total;});
   const now=Date.now(); const rows=[];
@@ -2269,7 +2727,7 @@ function renderCompare(){
 }
 /* ---- Ticket a detalle ---- */
 let TICKET_VIEW_ID=null;
-window.openTicketDetail=function(id){const o=ordersCache[id];if(!o)return;TICKET_VIEW_ID=id;const el=document.getElementById('ticket-detail');if(el)el.innerHTML=ticketInner(o,'caja');openModal('ticketModal');};
+window.openTicketDetail=function(id){const o=orderById(id);if(!o){showToast('Ese ticket ya no existe');return;}TICKET_VIEW_ID=id;const el=document.getElementById('ticket-detail');if(el)el.innerHTML=ticketInner(o,'caja');openModal('ticketModal');};
 window.printTicketFromModal=function(){if(TICKET_VIEW_ID!=null)printTicket(TICKET_VIEW_ID);};
 window.shareTicketFromModal=function(){if(TICKET_VIEW_ID!=null)shareTicket(TICKET_VIEW_ID);};
 
@@ -2278,7 +2736,7 @@ function renderReportes(){
   updatePeriodLabel();
   renderCompare();
   const costs=getCosts();
-  const sales=getOrders().filter(o=>o.status==='cobrado'&&o.paidAt&&repInRange(o.paidAt));
+  const sales=soldOrders().filter(o=>o.paidAt&&repInRange(o.paidAt));
   const ventas=sales.reduce((s,o)=>s+o.total,0);
   let cogs=0;const prod={};const met={efectivo:0,tarjeta:0,transferencia:0};
   sales.forEach(o=>{
@@ -2292,6 +2750,10 @@ function renderReportes(){
   document.getElementById('rep-nventas').textContent=sales.length+' pedidos';
   document.getElementById('rep-cogs').textContent=money(cogs);
   document.getElementById('rep-gastos').textContent=money(gastos);
+  // devoluciones del periodo (ventas canceladas: no suman, pero quedan a la vista)
+  const devs=getOrders().filter(o=>o&&o.status==='devuelto'&&o.paidAt&&repInRange(o.paidAt));
+  document.getElementById('rep-devol').textContent=money(devs.reduce((s,o)=>s+(+o.total||0),0));
+  document.getElementById('rep-ndevol').textContent=devs.length+(devs.length===1?' cancelada':' canceladas');
   const g=document.getElementById('rep-ganancia');g.textContent=money(ganancia);
   g.className='stat-num '+(ganancia>=0?'text-green-400':'text-red-400');
   document.getElementById('rep-margen').textContent='Margen '+margen+'%';
@@ -2316,13 +2778,14 @@ function renderReportes(){
   document.getElementById('rep-tickets-empty').classList.toggle('hidden',tickets.length>0);
   document.getElementById('rep-tickets-body').innerHTML=tickets.map(o=>`<tr class="border-b border-white/5 cursor-pointer hover:bg-white/5" onclick="openTicketDetail(${o.id})" title="Ver ticket a detalle">
     <td class="p-2 text-white/60">${fmtDateTime(o.paidAt)}</td>
-    <td class="p-2 font-medium">${o.table||'—'}</td>
-    <td class="p-2 text-white/60">${o.paidBy||'—'}</td>
+    <td class="p-2 font-medium">${esc(o.table||'—')}${o.recuperado?' <i class="fas fa-shield-halved text-[10px] text-blue-300" title="Venta rescatada de la copia del dueño"></i>':''}${o.domicilio?' <i class="fas fa-motorcycle text-[10px]" style="color:#F26522" title="A domicilio"></i>':''}</td>
+    <td class="p-2 text-white/60">${esc(o.paidBy||'—')}</td>
     <td class="p-2 text-right gold">${money(o.total)}</td>
     <td class="p-2 text-center"><div class="flex gap-1 justify-center">
       <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();openTicketDetail(${o.id})" title="Ver ticket"><i class="fas fa-eye"></i></button>
       <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();shareTicket(${o.id})" title="PDF"><i class="fab fa-whatsapp text-green-400"></i></button>
       <button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();printTicket(${o.id})" title="Imprimir"><i class="fas fa-print"></i></button>
+      ${can('devolver')?`<button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="event.stopPropagation();devolverVenta(${o.id})" title="Cancelar venta / devolución"><i class="fas fa-rotate-left text-red-400"></i></button>`:''}
     </div></td></tr>`).join('');
   // personas atendidas (lo que se capturó en cada venta; si no se puso, cuenta 1)
   document.getElementById('rep-personas').textContent=sales.reduce((s,o)=>s+(+o.personas||1),0);
@@ -2355,6 +2818,7 @@ function renderReportes(){
     <td class="p-2 text-center"><button class="btn btn-ghost" style="padding:.25rem .5rem" onclick="delGasto(${e.id})"><i class="fas fa-trash"></i></button></td></tr>`).join('');
 }
 window.openGastoModal=function(){
+  if(!can('gastos')){showToast('No tienes permiso para registrar gastos');return;}
   document.getElementById('gasto-concepto').value='';document.getElementById('gasto-monto').value='';
   document.getElementById('gasto-cat').value='Insumos';document.getElementById('gasto-fecha').value=todayStr();
   openModal('gastoModal');
@@ -2389,11 +2853,29 @@ function renderAll(){
 }
 
 /* ============ Listeners en tiempo real de Firebase ============ */
+let PERM_WARNED=false;
+function dbError(path){
+  return err=>{
+    console.warn('Firebase '+path+':',err&&err.code,err&&err.message);
+    if(err&&err.code==='PERMISSION_DENIED'&&!PERM_WARNED){
+      PERM_WARNED=true;
+      showToast('⛔ La base de datos rechazó el acceso: revisa las reglas en Firebase');
+      const c=document.getElementById('auth-chip');
+      if(c){c.innerHTML='<i class="fas fa-ban text-red-400"></i>';
+            c.title='Las reglas de Firebase están bloqueando a esta app. Revisa SEGURIDAD-firebase.md';}
+    }
+  };
+}
 function setupListeners(){
   db.ref('orders').on('value',s=>{
     ordersCache=s.val()||{};
     renderAll();
-  });
+  },dbError('orders'));
+  // Copias del dueño: respaldo de cada venta cobrada (sirve si se borra un pedido).
+  db.ref('tickets').limitToLast(1500).on('value',s=>{
+    ticketsSalesCache=s.val()||{};
+    renderAll();
+  },dbError('tickets'));
   db.ref('ticketConfig').on('value',s=>{
     ticketsCache=s.val()||{};
     const lg=ticketsCache.caja&&ticketsCache.caja.logo;
@@ -2415,7 +2897,26 @@ function setupListeners(){
   });
   db.ref('settings/fondoByDate').on('value',s=>{fondoByDate=s.val()||{};const t=fondoByDate[todayStr()];cashFloatCache=t?(+t.total||0):0;renderAll();});
   db.ref('discounts').on('value',s=>{discountsCache=s.val()||{};if(activeTab==='config')renderConfig();});
-  db.ref('users').on('value',s=>{usersCache=s.val()||{};renderConfig();});
+  db.ref('users').on('value',s=>{
+    usersCache=s.val()||{};
+    // Mantiene al día los permisos de quien está usando el sistema:
+    // si el dueño le cambia los accesos, se aplican sin volver a entrar.
+    if(currentUser&&!isOwner()){
+      const rec=usersCache[currentUser.user];
+      if(rec){
+        currentUser.role=rec.role||currentUser.role;
+        currentUser.name=rec.name||currentUser.name;
+        currentUser.tabs=effectiveTabs(rec);
+        currentUser.perms=effectivePerms(rec);
+        try{sessionStorage.setItem('shellsUser',JSON.stringify(currentUser));}catch(e){}
+        applySession();
+      }else{
+        showToast('Tu usuario fue eliminado');
+        appLogout();
+      }
+    }
+    renderConfig();
+  });
   db.ref('cortes').on('value',s=>{cortesCache=s.val()||{};if(activeTab==='reportes')renderReportes();});
   db.ref('menu').on('value',s=>{
     const fb=s.val();
@@ -2502,8 +3003,39 @@ window.downloadClientes=function(){
   document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1000);
   showToast('Descargando clientes ('+gran+')');
 };
-if(typeof db!=='undefined'&&db){
+/* ---- Estado de la conexión segura con la base de datos ---- */
+function renderAuthChip(){
+  const c=document.getElementById('auth-chip'); if(!c)return;
+  if(typeof PK_AUTH==='undefined'||!PK_AUTH.listo){
+    c.innerHTML='<i class="fas fa-circle-notch fa-spin text-white/30"></i>';c.title='Conectando…';return;
+  }
+  if(PK_AUTH.ok){
+    c.innerHTML='<i class="fas fa-lock text-green-400"></i>';
+    c.title='Conectado de forma segura a la base de datos';
+  }else{
+    c.innerHTML='<i class="fas fa-triangle-exclamation text-yellow-400"></i>';
+    c.title='Sin autenticar ('+(PK_AUTH.error||'desconocido')+'). Activa el proveedor "Anónimo" en Firebase › Authentication. La base solo quedará protegida cuando esto diga el candado verde.';
+  }
+}
+window.pkAuthChanged=function(){ renderAuthChip(); if(PK_AUTH.ok)startApp(); };
+
+let APP_STARTED=false;
+function startApp(){
+  if(APP_STARTED)return; APP_STARTED=true;
   setupListeners();
+}
+if(typeof db!=='undefined'&&db){
+  renderAuthChip();
+  // Espera a la autenticación; si tarda o falla, arranca igual (reglas abiertas).
+  if(typeof PK_AUTH!=='undefined'&&PK_AUTH.ok)startApp();
+  setTimeout(()=>{
+    if(!APP_STARTED){
+      startApp();
+      if(typeof PK_AUTH!=='undefined'&&!PK_AUTH.ok)
+        showToast('⚠️ Sin autenticación con Firebase (revisa Authentication › Anónimo)');
+    }
+    renderAuthChip();
+  },3500);
 }else{
   showToast('⚠️ No se pudo conectar con Firebase (revisa tu internet)');
   console.warn('Firebase no inicializado: revisa la conexión a internet o el bloque firebaseConfig en este archivo.');
