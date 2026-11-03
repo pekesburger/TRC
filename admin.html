@@ -635,7 +635,7 @@ tr.low td{background:rgba(239,68,68,.08)}
     </div>
     <p class="text-white/30 text-xs mt-2"><i class="fas fa-circle-info"></i> La copia del dueño siempre queda guardada en el sistema.</p>
     <div class="flex gap-2 mt-5">
-      <button class="btn btn-ghost flex-1" onclick="closeModal('payModal')">Cancelar</button>
+      <button class="btn btn-ghost flex-1" onclick="closePay()">Cancelar</button>
       <button class="btn btn-green flex-1" onclick="confirmPay()"><i class="fas fa-check"></i> Cobrar</button>
     </div>
   </div>
@@ -1627,9 +1627,10 @@ window.confirmPay=function(){
   if(document.getElementById('pay-print').checked) printDoc(ticketHTML(full,'caja'));
   if(document.getElementById('pay-print-owner').checked) setTimeout(()=>printDoc(ticketHTML(full,'caja',true)),1500);
   if(document.getElementById('pay-wa').checked) shareTicketDoc(full);
-  if(posEditId===id) posReset();
+  // La caja se limpia sola: lista para la siguiente orden sin tocar "vaciar".
+  if(posEditId===id||posChargingId===id) posReset();
   closeModal('payModal');
-  showToast('¡Cobrado! '+money(total)+(change?' · Cambio '+money(change):''));
+  showToast('¡Cobrado! '+money(total)+(change?' · Cambio '+money(change):'')+' · Caja lista');
   setTimeout(()=>{PAYING=false;},800);
 };
 
@@ -2183,11 +2184,11 @@ window.tkTestPrint=function(){
 
 /* ============ POS: Nueva orden / Editar (personal) ============ */
 const EXTRAS_PRESET=['Esencia de Lavanda','Vainilla','Mocha','Caramelo','Salted Chocolate Caramel','Jamón y Queso'];
-let posCart=[], posCat=null, posSel={}, posEditId=null, extraLine=null;
+let posCart=[], posCat=null, posSel={}, posEditId=null, posChargingId=null, extraLine=null;
 function posKey(n,s){return n+'|'+(s||'');}
 const posVal=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
 function posReset(){
-  posCart=[];posSel={};posEditId=null;
+  posCart=[];posSel={};posEditId=null;posChargingId=null;
   posVal('pos-name','');posVal('pos-phone','');posVal('pos-mesa','');posVal('pos-personas','');posVal('pos-search','');
   posSetDeliveryUI(null,'');
   const t=document.getElementById('pos-title');
@@ -2199,6 +2200,7 @@ function posReset(){
 window.editOrder=function(id){
   const o=ordersCache[id]; if(!o){showToast('Ese pedido ya no existe');return;}
   if(o.status==='cobrado'){showToast('Ese pedido ya fue cobrado');return;}
+  if(posChargingId&&posChargingId!==id)descartarCobroPendiente();
   posCart=(o.items||[]).map(i=>({name:i.name,price:+i.price||0,size:i.size||'',qty:+i.qty||1,note:i.note||'',
     extras:(i.extras||[]).map(e=>({name:e.name,price:+e.price||0})),
     isDelivery:!!i.isDelivery||i.name===DELIVERY_NAME,
@@ -2260,7 +2262,25 @@ function posSetDeliveryUI(price,addr){
 }
 window.posClear=function(){
   if(posCart.length&&!confirm('¿Vaciar la venta en curso?'))return;
+  descartarCobroPendiente();   // si se había mandado a cobrar y se canceló, no deja pedido fantasma
   posCart=[]; posSetDeliveryUI(null,''); renderCajaSafe();
+};
+/* Si se le dio Cobrar y luego se cerró el cobro sin terminar, el pedido que se
+   guardó por seguridad se borra: la venta sigue en pantalla y no queda basura
+   en "Pedidos guardados". */
+function descartarCobroPendiente(){
+  const id=posChargingId; if(!id)return;
+  posChargingId=null;
+  const o=ordersCache[id];
+  if(o&&o.status!=='cobrado'&&o.status!=='devuelto'){
+    delete ordersCache[id];
+    db.ref('orders/'+id).remove().catch(e=>console.warn('descartar cobro',e));
+  }
+}
+window.closePay=function(){
+  closeModal('payModal');
+  descartarCobroPendiente();
+  renderCajaSafe();
 };
 window.posSetCat=function(c){ posCat=c; const s=document.getElementById('pos-search'); if(s)s.value=''; renderPOS(); };
 window.posPickSize=function(name,price,size){ posSel[slugify(name)]={price:+price,size}; renderPOS(); };
@@ -2448,8 +2468,11 @@ function posCollect(){
 }
 // Escribe el pedido en Firebase y lo deja disponible al instante en la caché local.
 function persistOrder(d){
-  const id=posEditId||Date.now();
-  const prev=posEditId?(ordersCache[id]||{}):{};
+  // posChargingId: la venta que ya se mandó a cobrar y sigue en pantalla.
+  // Así, si se cancela el cobro y se vuelve a intentar, se actualiza la misma
+  // orden en lugar de crear una repetida.
+  const id=posEditId||posChargingId||Date.now();
+  const prev=(posEditId||posChargingId)?(ordersCache[id]||{}):{};
   const ord=Object.assign({},prev,{
     id, table:d.name, phone:d.phone, mesa:d.mesa, personas:d.personas,
     domicilio:!!d.domicilio, direccion:d.direccion||'',
@@ -2473,7 +2496,8 @@ window.posSave=function(){
 window.posCharge=function(){
   if(!can('cobrar')){showToast('No tienes permiso para cobrar');return;}
   const d=posCollect(); if(!d)return;
-  const id=persistOrder(d);   // se guarda primero: si cancelas el cobro, la venta no se pierde
+  const id=persistOrder(d);   // se guarda primero: si se cae la luz, la venta no se pierde
+  posChargingId=id;           // al terminar el cobro, la caja se limpia sola
   openPay(id);
 };
 
@@ -2836,7 +2860,11 @@ window.delGasto=function(id){if(!confirm('¿Eliminar este gasto?'))return;db.ref
 /* ============ Modales / badges / loop ============ */
 function openModal(id){document.getElementById(id).classList.add('open');}
 window.closeModal=function(id){document.getElementById(id).classList.remove('open');}
-document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');}));
+document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
+  if(e.target!==m)return;
+  m.classList.remove('open');
+  if(m.id==='payModal'&&typeof descartarCobroPendiente==='function'){descartarCobroPendiente();renderCajaSafe();}
+}));
 function updateBadge(id,n){const b=document.getElementById(id);if(!b)return;b.textContent=n;b.classList.toggle('hidden',!n);}
 
 function renderAll(){
